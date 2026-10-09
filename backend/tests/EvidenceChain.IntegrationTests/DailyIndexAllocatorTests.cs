@@ -47,28 +47,39 @@ public sealed class DailyIndexAllocatorTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task Concurrent_registrations_allocate_and_save_in_one_retriable_transaction()
+    public async Task Fifty_parallel_registrations_on_one_type_and_day_get_fifty_gap_free_codes()
     {
-        // The pattern a registration must follow with EnableRetryOnFailure: allocate, save and commit
-        // as one unit inside the execution strategy, so a retry replays all of it.
+        // The pattern a registration must follow with EnableRetryOnFailure: allocate, save and commit as one unit inside
+        // the execution strategy, so a retry replays all of it. Five of the 55 give up after taking a number: theirs are
+        // handed out again, so the 50 that commit hold exactly 1 to 50.
         var registered = new DateTime(2026, 1, 15, 10, 0, 0, DateTimeKind.Utc);
-        var codes = await Task.WhenAll(Enumerable.Range(0, 8).Select(i => Task.Run(async () =>
+        var codes = await Task.WhenAll(Enumerable.Range(0, 55).Select(i => Task.Run(async () =>
         {
             await using var db = await OpenAsync();
-            return await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            try
             {
-                await using var transaction = await db.Database.BeginTransactionAsync(Token);
-                var dailyNo = await DailyIndexAllocator.NextAsync(db, EvidenceTypes.Csv, DateOnly.FromDateTime(registered), Token);
-                var evidence = new Evidence(EvidenceTypes.Csv, DateOnly.FromDateTime(registered), dailyNo, $"Registro concurrente {i}",
-                    registered.AddHours(-1), registered, registeredById: 1, initialCustodianId: 4, new EvidenceContent([(byte)i], "text/csv; charset=utf-8"));
-                db.Evidence.Add(evidence);
-                await db.SaveChangesAsync(Token);
-                await transaction.CommitAsync(Token);
-                return evidence.Code;
-            });
+                return await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+                {
+                    await using var transaction = await db.Database.BeginTransactionAsync(Token);
+                    var dailyNo = await DailyIndexAllocator.NextAsync(db, EvidenceTypes.Csv, DateOnly.FromDateTime(registered), Token);
+                    var evidence = new Evidence(EvidenceTypes.Csv, DateOnly.FromDateTime(registered), dailyNo, $"Registro concurrente {i}",
+                        registered.AddHours(-1), registered, registeredById: 1, initialCustodianId: 4, new EvidenceContent([(byte)i], "text/csv; charset=utf-8"));
+                    db.Evidence.Add(evidence);
+                    await db.SaveChangesAsync(Token);
+                    if (i % 11 == 10)
+                        throw new OperationCanceledException("Registration abandoned before commit.");
+                    await transaction.CommitAsync(Token);
+                    return evidence.Code;
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                return null; // rolled back with its number
+            }
         })));
 
-        Assert.Equal(Enumerable.Range(1, 8).Select(n => $"CSV20260115{n:D4}"), codes.Order(StringComparer.Ordinal));
+        Assert.Equal(5, codes.Count(c => c is null));
+        Assert.Equal(Enumerable.Range(1, 50).Select(n => $"CSV20260115{n:D4}"), codes.OfType<string>().Order(StringComparer.Ordinal));
     }
 
     [Fact]
