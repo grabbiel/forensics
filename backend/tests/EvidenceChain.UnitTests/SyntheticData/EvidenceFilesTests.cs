@@ -33,7 +33,7 @@ public sealed partial class EvidenceFilesTests
             Assert.Equal($"{e.Code}.{EvidenceTypes.FileExtension(e.TypeCode)}", e.FileName);
             Assert.Equal(e.TypeCode + e.CodeDateUtc.ToString("yyyyMMdd", CultureInfo.InvariantCulture) + e.DailyNo.ToString("D4", CultureInfo.InvariantCulture), e.Code);
             Assert.Equal(DateOnly.FromDateTime(e.RegisteredAtUtc), e.CodeDateUtc);
-            Assert.True(EvidenceCode.IsValid(e.Code));
+            Assert.Equal(EvidenceCode.Format(e.TypeCode, e.CodeDateUtc, e.DailyNo), e.Code);
         });
         Assert.Equal(data.Evidences.Count, data.Evidences.Select(e => e.Code).Distinct().Count());
     }

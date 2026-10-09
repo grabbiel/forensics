@@ -15,8 +15,6 @@ internal static class Reference
         Built.GetOrAdd(profile, name => new Lazy<SyntheticDataset>(() =>
             DatasetBuilder.Build(ReferenceDataset.Seed, ReferenceDataset.AnchorUtc, DatasetProfile.Named.Single(p => p.Name == name)))).Value;
 
-    public static DateTime Anchor => ReferenceDataset.AnchorUtc;
-
     /// <summary>Walks up from the test output folder to a file under the repository root.</summary>
     public static string RepoFile(params string[] parts)
     {

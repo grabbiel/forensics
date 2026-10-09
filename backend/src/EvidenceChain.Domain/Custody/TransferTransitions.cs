@@ -26,10 +26,7 @@ public enum TransitionError
 }
 
 /// <summary>Outcome of <see cref="TransferTransitions.Decide"/>: the next status, or why not.</summary>
-public readonly record struct TransitionDecision(TransferStatus? Next, TransitionError Error)
-{
-    public bool IsAllowed => Error == TransitionError.None;
-}
+public readonly record struct TransitionDecision(TransferStatus? Next, TransitionError Error);
 
 /// <summary>
 /// The transfer state machine as one pure table. Investigadores request; only the designated recipient,
@@ -103,12 +100,6 @@ public sealed class InvalidTransitionException(TransferCommand command, CustodyT
 {
     /// <summary>The transfer acted on, or the one already pending when a request is refused.</summary>
     public CustodyTransfer? Transfer { get; } = transfer;
-
-    public TransferStatus? CurrentStatus { get; } = transfer?.Status;
-
-    public int? ActedById { get; } = transfer?.DecidedById;
-
-    public DateTime? ActedAtUtc { get; } = transfer?.DecidedAtUtc;
 
     private static string Describe(TransferCommand command, CustodyTransfer? transfer) => (command, transfer) switch
     {

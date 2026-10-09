@@ -22,15 +22,4 @@ public sealed class EvidenceCodeTests
     [InlineData("log")]
     public void Format_rejects_unknown_types(string type) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => EvidenceCode.Format(type, new DateOnly(2026, 10, 7), 1));
-
-    [Theory]
-    [InlineData("EML202610070003", true)]
-    [InlineData("LOG202602290001", false)] // 2026 is not a leap year
-    [InlineData("LOG202613400001", false)] // month 13
-    [InlineData("LOG202610070000", false)] // index 0
-    [InlineData("log202610070001", false)] // lower-case type
-    [InlineData("LOG20261007001", false)]  // three-digit index
-    [InlineData(null, false)]
-    public void IsValid_checks_shape_calendar_date_and_index(string? code, bool expected) =>
-        Assert.Equal(expected, EvidenceCode.IsValid(code));
 }

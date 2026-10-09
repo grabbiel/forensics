@@ -6,7 +6,6 @@ using System.Text.Json;
 using EvidenceChain.Api.Auth;
 using EvidenceChain.Api.Problems;
 using EvidenceChain.Application.People;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -101,7 +100,9 @@ public sealed class AuthTests(ApiFactory factory)
     public async Task Health_sign_in_and_the_contract_are_open_and_unknown_routes_are_404_for_a_signed_in_user()
     {
         var anonymous = factory.CreateClient();
-        Assert.Equal(HttpStatusCode.OK, (await anonymous.GetAsync("/api/v1/health/live", Token)).StatusCode);
+        var live = await anonymous.GetAsync("/api/v1/health/live", Token);
+        Assert.Equal(HttpStatusCode.OK, live.StatusCode);
+        Assert.True(live.Headers.CacheControl?.NoStore); // probes never see a cached answer
         Assert.Equal(HttpStatusCode.OK, (await anonymous.GetAsync("/openapi/v1.yaml", Token)).StatusCode);
         Assert.NotEqual(HttpStatusCode.Unauthorized, (await anonymous.PostAsJsonAsync("/api/v1/auth/token", new { userName = "x" }, Token)).StatusCode);
 
