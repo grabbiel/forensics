@@ -14,25 +14,22 @@ internal sealed record PlannedEvidence(
     string InitialCustodian,
     DeterministicRandom ContentRandom);
 
-/// <summary>Spreads 400 .log, 300 .csv and 300 .eml over the 90 days before the anchor, with one busy day.</summary>
+/// <summary>Spreads the profile's evidences over the days before the anchor, with one busy day.</summary>
 internal static class EvidenceSchedule
 {
-    public const int Days = 90;
     public const int BusyDayCount = 44;
-    // An array, not a dictionary: enumeration order must be part of the contract.
-    public static readonly IReadOnlyList<(string Type, int Count)> PerType =
-        [(EvidenceTypes.Log, 400), (EvidenceTypes.Csv, 300), (EvidenceTypes.Eml, 300)];
 
     /// <summary>Plans every evidence in registration order; daily numbers restart per (type, UTC date).</summary>
-    public static IReadOnlyList<PlannedEvidence> Plan(DeterministicRandom random, DateTime anchorUtc)
+    public static IReadOnlyList<PlannedEvidence> Plan(DeterministicRandom random, DateTime anchorUtc, DatasetProfile profile)
     {
-        var windowStart = anchorUtc.AddDays(-Days);
-        var windowMs = (long)Days * 24 * 3_600_000;
-        var types = PerType.SelectMany(t => Enumerable.Repeat(t.Type, t.Count)).ToList();
+        var days = profile.Days;
+        var windowStart = anchorUtc.AddDays(-days);
+        var windowMs = (long)days * 24 * 3_600_000;
+        var types = profile.TypeSplit.SelectMany(t => Enumerable.Repeat(t.Type, t.Count)).ToList();
         random.Shuffle(types);
 
         // Busy day: dozens of one type on one whole UTC date, to exercise four-digit daily numbering.
-        var busyDate = windowStart.Date.AddDays(random.Next(5, Days - 5));
+        var busyDate = windowStart.Date.AddDays(random.Next(5, days - 5));
         var busyLeft = BusyDayCount;
 
         var investigators = SyntheticPeople.WithRole(SyntheticRole.Investigador);

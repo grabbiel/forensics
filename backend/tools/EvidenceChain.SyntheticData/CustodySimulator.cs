@@ -1,10 +1,8 @@
 namespace EvidenceChain.SyntheticData;
 
-/// <summary>Custody histories that obey the domain rules, totalling exactly <see cref="TotalEvents"/> events.</summary>
+/// <summary>Custody histories that obey the domain rules, totalling exactly the profile's event count.</summary>
 internal static class CustodySimulator
 {
-    public const int TotalEvents = 10_000;
-    public const int MaxTransfersPerEvidence = 10;
     public const double AcceptRate = 0.875;
 
     /// <summary>Acceptance deadline, matching the API's Anomalies:TransferAcceptanceDeadline default.</summary>
@@ -34,7 +32,7 @@ internal static class CustodySimulator
         IReadOnlyDictionary<string, int> EventCount);
 
     /// <summary>Simulates every evidence in registration order.</summary>
-    public static Result Simulate(IReadOnlyList<PlannedEvidence> evidences, FixturePlan fixtures, DateTime anchorUtc, DeterministicRandom random)
+    public static Result Simulate(IReadOnlyList<PlannedEvidence> evidences, FixturePlan fixtures, DatasetProfile profile, DateTime anchorUtc, DeterministicRandom random)
     {
         var pendingAt = new Dictionary<string, DateTime>
         {
@@ -50,7 +48,7 @@ internal static class CustodySimulator
             minimum[code] = 1;
 
         // A decided transfer adds two events, a pending one adds one.
-        var decidedTotal = Math.DivRem(TotalEvents - evidences.Count - pendingAt.Count, 2, out var odd);
+        var decidedTotal = Math.DivRem(profile.TotalEvents - evidences.Count - pendingAt.Count, 2, out var odd);
         if (odd != 0)
             throw new InvalidOperationException("Pending transfers must be even for the event total to be reachable.");
 
@@ -59,7 +57,7 @@ internal static class CustodySimulator
             var start = e.RegisteredAtUtc + TimeSpan.FromMinutes(1);
             var end = (pendingAt.TryGetValue(e.Code, out var p) ? p : anchorUtc) - TimeSpan.FromMinutes(1);
             var usableMs = Ms(end - start) - (late.Contains(e.Code) ? LateBudgetMs : 0);
-            var max = (int)Math.Clamp(usableMs / MinSlotMs, 0, MaxTransfersPerEvidence - (pendingAt.ContainsKey(e.Code) ? 1 : 0));
+            var max = (int)Math.Clamp(usableMs / MinSlotMs, 0, profile.MaxTransfersPerEvidence - (pendingAt.ContainsKey(e.Code) ? 1 : 0));
             var min = Math.Min(minimum.GetValueOrDefault(e.Code), max);
             var drawn = random.Next(0, (int)Math.Clamp((end - start).Ticks / TimeSpan.TicksPerDay, 0, 9) + 1);
             return new EvidencePlan(e, start, end, min, max, Math.Clamp(drawn, min, max));
@@ -132,7 +130,8 @@ internal static class CustodySimulator
                 else if (diff < 0 && p.Decided > p.Min) { p.Decided--; diff++; moved = true; }
             }
             if (!moved)
-                throw new InvalidOperationException("The event total cannot be reached within the per-evidence limits.");
+                throw new ArgumentException(
+                    "The event total cannot be reached: recent evidences have too little time for that many transfers. Lower --events or raise --evidences or --max-transfers.");
         }
     }
 

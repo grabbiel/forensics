@@ -9,17 +9,21 @@ namespace EvidenceChain.SyntheticData;
 /// </summary>
 public static class DatasetBuilder
 {
-    /// <summary>Generates users, 1,000 evidence files, their transfers and exactly 10,000 custody events.</summary>
-    public static SyntheticDataset Build(ulong seed, DateTime anchorUtc)
+    /// <summary>The reference size: 1,000 evidence files and exactly 10,000 custody events.</summary>
+    public static SyntheticDataset Build(ulong seed, DateTime anchorUtc) => Build(seed, anchorUtc, DatasetProfile.Reference);
+
+    /// <summary>Generates users, the profile's evidence files, their transfers and exactly its event total.</summary>
+    public static SyntheticDataset Build(ulong seed, DateTime anchorUtc, DatasetProfile profile)
     {
         if (anchorUtc.Kind != DateTimeKind.Utc)
             throw new ArgumentException("The anchor must be a UTC instant.", nameof(anchorUtc));
+        profile.Validate();
 
         // One forked stream per phase, so changing one phase never shifts another's draws.
         var random = new DeterministicRandom(seed);
-        var planned = EvidenceSchedule.Plan(random.Fork(), anchorUtc);
-        var fixtures = FixturePlan.Choose(planned, anchorUtc, random.Fork());
-        var custody = CustodySimulator.Simulate(planned, fixtures, anchorUtc, random.Fork());
+        var planned = EvidenceSchedule.Plan(random.Fork(), anchorUtc, profile);
+        var fixtures = FixturePlan.Choose(planned, anchorUtc, profile.OrdinaryPending, random.Fork());
+        var custody = CustodySimulator.Simulate(planned, fixtures, profile, anchorUtc, random.Fork());
         var fixtureNames = fixtures.NamesByCode();
 
         var evidences = planned.Select(p =>
@@ -55,7 +59,7 @@ public static class DatasetBuilder
             CustodianTamperedTo: tamperRandom.Pick(otherCustodians),
             fixtures.AcceptedLate.Select(e => e.Code).Order(StringComparer.Ordinal).ToArray());
 
-        return new SyntheticDataset(seed, anchorUtc, SyntheticPeople.All, evidences, custody.Transfers, custody.Events, publicFixtures);
+        return new SyntheticDataset(seed, anchorUtc, profile, SyntheticPeople.All, evidences, custody.Transfers, custody.Events, publicFixtures);
     }
 
     /// <summary>Media type stored with each file.</summary>

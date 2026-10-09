@@ -95,6 +95,7 @@ public sealed record DatasetFixtures(
 public sealed record SyntheticDataset(
     ulong Seed,
     DateTime AnchorUtc,
+    DatasetProfile Profile,
     IReadOnlyList<SyntheticUser> Users,
     IReadOnlyList<SyntheticEvidence> Evidences,
     IReadOnlyList<SyntheticTransfer> Transfers,

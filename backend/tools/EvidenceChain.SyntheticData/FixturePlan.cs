@@ -15,10 +15,9 @@ internal sealed record FixturePlan(
     IReadOnlyList<PlannedEvidence> OrdinaryPending)
 {
     public const int AcceptedLateCount = 3;
-    public const int OrdinaryPendingCount = 2;
 
     /// <summary>Chooses fixtures deterministically from evidences old enough to hold long histories.</summary>
-    public static FixturePlan Choose(IReadOnlyList<PlannedEvidence> planned, DateTime anchorUtc, DeterministicRandom random)
+    public static FixturePlan Choose(IReadOnlyList<PlannedEvidence> planned, DateTime anchorUtc, int ordinaryPending, DeterministicRandom random)
     {
         var pool = planned.Where(p => p.RegisteredAtUtc <= anchorUtc.AddDays(-20)).ToList();
         random.Shuffle(pool);
@@ -40,7 +39,7 @@ internal sealed record FixturePlan(
             ContentTampered: Take(_ => true),
             CustodianTampered: Take(_ => true),
             AcceptedLate: Enumerable.Range(0, AcceptedLateCount).Select(_ => Take(_ => true)).ToArray(),
-            OrdinaryPending: Enumerable.Range(0, OrdinaryPendingCount).Select(_ => Take(_ => true)).ToArray());
+            OrdinaryPending: Enumerable.Range(0, ordinaryPending).Select(_ => Take(_ => true)).ToArray());
     }
 
     /// <summary>Fixture name per evidence code, as shown in the manifest.</summary>
