@@ -1,7 +1,10 @@
 using System.Text.Json.Serialization;
 using EvidenceChain.Api.OpenApi;
 using EvidenceChain.Api.Security;
+using EvidenceChain.Application.Anomalies;
+using EvidenceChain.Domain.Anomalies;
 using EvidenceChain.Infrastructure;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +23,15 @@ builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi(options => OpenApiDocumentSetup.Configure(options));
 builder.Services.AddHealthChecks(); // liveness only: must never touch SQL (keeps serverless/auto-pause idle)
 builder.Services.AddInfrastructure(connectionString);
+
+// Anomaly rules read the deadline from configuration and the time from an injectable clock.
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddOptions<AnomalyOptions>()
+    .BindConfiguration(AnomalyOptions.Section)
+    .Validate(o => o.TransferAcceptanceDeadline > TimeSpan.Zero, "Anomalies:TransferAcceptanceDeadline must be positive.")
+    .ValidateOnStart();
+builder.Services.AddSingleton(sp => new OverdueTransferRule(
+    sp.GetRequiredService<IOptions<AnomalyOptions>>().Value.TransferAcceptanceDeadline, sp.GetRequiredService<TimeProvider>()));
 
 string[] corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [];
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy

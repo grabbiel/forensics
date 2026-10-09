@@ -1,6 +1,7 @@
 extern alias seeder;
 
 using System.Security.Cryptography;
+using EvidenceChain.Domain.Anomalies;
 using EvidenceChain.Domain.Catalog;
 using EvidenceChain.Domain.Integrity;
 using EvidenceChain.Infrastructure.Persistence;
@@ -11,7 +12,7 @@ using SeedMode = seeder::EvidenceChain.Seeder.SeedMode;
 
 namespace EvidenceChain.IntegrationTests;
 
-/// <summary>Loads the reference dataset into fresh databases and checks what landed (roadmap §2.4).</summary>
+/// <summary>Loads the reference dataset into fresh databases, checks what landed (roadmap §2.4) and runs the domain rules over it (§2.1).</summary>
 [Collection(nameof(SqlCollection))]
 public sealed class SeedTests(ApiFactory factory)
 {
@@ -81,6 +82,52 @@ public sealed class SeedTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task The_verifier_passes_every_evidence_except_the_three_tamper_fixtures()
+    {
+        var (a, _) = await SeededAsync();
+        var f = Dataset.Value.Fixtures;
+        await using var db = SqlServerSetup.CreateContext(a);
+        var evidences = await db.Evidence.AsNoTracking().Include(e => e.Content).ToListAsync(Token);
+        var chains = (await db.CustodyEvents.AsNoTracking().OrderBy(e => e.Seq).ToListAsync(Token)).ToLookup(e => e.EvidenceId);
+        var transfers = (await db.CustodyTransfers.AsNoTracking().ToListAsync(Token)).ToLookup(t => t.EvidenceId);
+
+        var failures = evidences
+            .Select(e => (e.Code, Verdict: ChainVerifier.Verify(Keys, e, chains[e.EvidenceId].ToList(), transfers[e.EvidenceId].ToList(), e.Content)))
+            .Where(r => !r.Verdict.IsValid)
+            .ToDictionary(r => r.Code, r => (r.Verdict.Failure!.Value.Code(), r.Verdict.FailedAtSeq!.Value));
+
+        Assert.Equal(997, evidences.Count - failures.Count);
+        Assert.Equal(new Dictionary<string, (string, int)>
+        {
+            [f.EventTampered] = ("MAC_MISMATCH", f.EventTamperedSeq),
+            [f.ContentTampered] = ("CONTENT_HASH_MISMATCH", 1),
+            [f.CustodianTampered] = ("CUSTODY_PROJECTION_MISMATCH", evidences.Single(e => e.Code == f.CustodianTampered).EventCount),
+        }, failures);
+    }
+
+    [Fact]
+    public async Task At_the_anchor_only_the_overdue_fixture_and_the_late_acceptances_are_flagged()
+    {
+        var (a, _) = await SeededAsync();
+        var f = Dataset.Value.Fixtures;
+        await using var db = SqlServerSetup.CreateContext(a);
+        var codes = await db.Evidence.ToDictionaryAsync(e => e.EvidenceId, e => e.Code, Token);
+        var transfers = await db.CustodyTransfers.AsNoTracking().ToListAsync(Token);
+        var rule = new OverdueTransferRule(TimeSpan.FromHours(48), new FixedClock(Dataset.Value.AnchorUtc));
+
+        var findings = transfers
+            .Select(t => (Code: codes[t.EvidenceId], Finding: rule.Evaluate(t)))
+            .Where(r => r.Finding is not null)
+            .Select(r => (r.Code, r.Finding!.Kind, r.Finding.Severity))
+            .OrderBy(r => r.Code, StringComparer.Ordinal).ToList();
+
+        var expected = f.AcceptedLate.Select(code => (code, TransferAnomalyKind.AcceptedLate, AnomalySeverity.Medium))
+            .Append((f.OverdueTransfer, TransferAnomalyKind.Overdue, AnomalySeverity.Medium))
+            .OrderBy(r => r.Item1, StringComparer.Ordinal).ToList();
+        Assert.Equal(expected, findings);
+    }
+
+    [Fact]
     public async Task Reseeding_is_a_no_op_refused_or_a_full_reload_and_new_rows_continue_the_ids()
     {
         var connectionString = await factory.CreateDatabaseAsync("EvidenceChainSeedRerun", Token);
@@ -146,5 +193,10 @@ public sealed class SeedTests(ApiFactory factory)
                 return Path.Combine([dir.FullName, .. parts]);
         }
         throw new DirectoryNotFoundException("Repository root not found.");
+    }
+
+    private sealed class FixedClock(DateTime nowUtc) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => new(nowUtc, TimeSpan.Zero);
     }
 }
