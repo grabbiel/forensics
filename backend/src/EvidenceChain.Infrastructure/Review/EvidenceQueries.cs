@@ -2,6 +2,7 @@ using EvidenceChain.Application.Common;
 using EvidenceChain.Application.Review;
 using EvidenceChain.Domain.Anomalies;
 using EvidenceChain.Domain.Custody;
+using EvidenceChain.Infrastructure.People;
 using EvidenceChain.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -37,7 +38,7 @@ internal sealed class EvidenceQueries(AppDbContext db, OverdueTransferRule overd
             return null;
 
         var (evidence, inbox, transfers) = (read.Evidence, read.Inbox, read.Transfers);
-        var people = await PeopleAsync(cancellationToken);
+        var people = await PeopleIndex.LoadAsync(db, cancellationToken);
 
         var pending = transfers.SingleOrDefault(t => t.Status == TransferStatus.Pending);
         var anomalies = transfers
@@ -66,21 +67,12 @@ internal sealed class EvidenceQueries(AppDbContext db, OverdueTransferRule overd
             return null;
 
         var events = await db.CustodyEvents.AsNoTracking().Where(e => e.EvidenceId == evidenceId).OrderBy(e => e.Seq).ToListAsync(cancellationToken);
-        var people = await PeopleAsync(cancellationToken);
+        var people = await PeopleIndex.LoadAsync(db, cancellationToken);
         return new EvidenceChainView(code, events.Select(e => new ChainEventView(
             e.CustodyEventId, e.Seq, e.Kind, e.OccurredAtUtc, people.Of(e.ActorId),
             e.FromCustodianId is { } from ? people.Of(from) : null,
             e.ToCustodianId is { } to ? people.Of(to) : null,
             e.TransferId, e.Notes, e.KeyId, Convert.ToHexStringLower(e.Mac),
             e.PrevMac is { } prev ? Convert.ToHexStringLower(prev) : null)).ToList());
-    }
-
-    /// <summary>Every user by id; there are a handful.</summary>
-    private async Task<People> PeopleAsync(CancellationToken cancellationToken) =>
-        new(await db.Users.AsNoTracking().ToDictionaryAsync(u => u.UserId, u => new PersonRef(u.UserId, u.DisplayName), cancellationToken));
-
-    private sealed class People(Dictionary<int, PersonRef> byId)
-    {
-        public PersonRef Of(int id) => byId.TryGetValue(id, out var person) ? person : new PersonRef(id, $"#{id}");
     }
 }
