@@ -28,7 +28,7 @@ public sealed class SqlCollection : ICollectionFixture<ApiFactory>;
 /// <summary>Runs the API against a real SQL Server 2025 container. Without Docker, DB tests skip locally (on CI they fail); the rest still run.</summary>
 public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-    private const string Image = "mcr.microsoft.com/mssql/server:2025-latest";
+    private const string Image = "mcr.microsoft.com/mssql/server:2025-latest"; // CI pre-pulls it: keep backend.yml in step
     private const string AppLogin = "evidence_app";
     private const string AppPassword = "DevOnly_TestPassw0rd!2026";
     private MsSqlContainer? _sql;
