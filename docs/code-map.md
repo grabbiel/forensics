@@ -1,0 +1,13 @@
+# Code map
+
+Backend paths are under `backend/src/`; frontend paths under `frontend/src/`.
+
+| Capability | File / module | Entry point |
+|---|---|---|
+| Hash chaining and verification | `EvidenceChain.Domain/Integrity/CanonicalEvent.cs` (encoding), `ChainHasher.cs` (HMAC, key ring), `ChainVerifier.cs` (first failure); `EvidenceChain.Domain/Custody/CustodyLedger.cs` signs each new event | `GET /api/v1/evidence/{id}/chain/verify` → `EvidenceController.Verify` → `ChainVerificationService.VerifyAsync` (`EvidenceChain.Application/Integrity/ChainVerification.cs`) |
+| State machine and concurrency | `EvidenceChain.Domain/Custody/TransferTransitions.cs` (`Decide`, the transition function), `CustodyTransfer.cs` (`Accept`, `Reject`); `EvidenceChain.Infrastructure/Custody/CustodyTransferService.cs` (row lock, `rowversion` against `If-Match`); `EvidenceChain.Api/Problems/ProblemExceptionFilter.cs` (`409` body) | `POST /api/v1/custody-transfers/{id}/accept` and `/reject` → `CustodyTransfersController.Accept` / `Reject` → `CustodyTransferService.DecideAsync` |
+| Idempotency | `EvidenceChain.Api/Http/WriteHeaders.cs` (`[RequireIdempotencyKey]`), `RequestFingerprint.cs`; `CustodyTransferService.cs` (replay before writing); `features/transfers/pendingIntent.ts` (one key per write in the SPA) | `POST /api/v1/custody-transfers` → `CustodyTransfersController.Create` → `CustodyTransferService.RequestAsync`; accept and reject replay inside `DecideAsync` (row above) |
+| Anomaly rule | `EvidenceChain.Domain/Anomalies/OverdueTransferRule.cs`; deadline `Anomalies:TransferAcceptanceDeadline`, 48 h (`EvidenceChain.Application/Anomalies/AnomalyOptions.cs`) | `GET /api/v1/evidence/{id}` → `EvidenceController.Get` → `EvidenceQueries.GetDetailAsync` → `OverdueTransferRule.Evaluate` |
+| Paged query | `EvidenceChain.Infrastructure/Inbox/EvidenceInboxQuery.cs` (keyset predicate); `EvidenceChain.Api/Inbox/InboxCursor.cs` (opaque cursor); indexes in `EvidenceChain.Infrastructure/Persistence/Configurations/ReadModelConfiguration.cs` | `GET /api/v1/evidence` → `EvidenceController.List` → `EvidenceInboxQuery.ListAsync` |
+| URL filters and request cancellation | `features/inbox/inboxLoader.ts` (`readFilter`; passes `request.signal` to `fetch`), `features/inbox/InboxPage.tsx`, `lib/useUpdateSearch.ts`, `layout/SearchBox.tsx` (debounced `q`) | route `/` → `inboxLoader` (`routes.tsx`); the router aborts a superseded loader's request |
+| Optimistic update and 409 handling | `features/transfers/TransferPanel.tsx` (pending row, reconciliation, alerts), `transferActions.ts` (outcome of each write), `pendingIntent.ts` | route actions `/evidence/:id/transfer`, `/transfers/:transferId/accept`, `/transfers/:transferId/reject` (`routes.tsx`) |

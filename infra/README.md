@@ -3,7 +3,7 @@
 The evaluated deliverable is `docker compose up --build`. This folder deploys the same API to Azure:
 App Service (Linux B1, .NET 10) → Azure SQL (S1, Entra-only auth) with Key Vault, Log Analytics and Application Insights, in one resource group per azd environment. The SPA is deployed separately on Vercel.
 
-Approximate cost while running: **≈ $45/month** at US list prices (B1 ≈ $12.41, S1 ≈ $29.43, the rest ≈ $1). `azd down --purge` removes everything.
+Approximate cost while running: **≈ $43/month** at US list prices (B1 ≈ $12.41, S1 ≈ $29.43, the rest ≈ $1). `azd down --purge` removes everything.
 
 ## Prerequisites
 
@@ -38,15 +38,29 @@ Approximate cost while running: **≈ $45/month** at US list prices (B1 ≈ $12.
 
 4. **Prepare the database:** `infra/scripts/prepare-database.sh`. It opens a temporary firewall rule for your IP, then:
    - applies the migrations;
-   - creates the API's managed-identity user (read-only);
-   - sets compatibility level 170;
-   - inserts the tracer rows.
+   - creates the API's managed-identity user: it can read, write custody by column, and never update or delete custody events (`DENY UPDATE, DELETE`);
+   - allows SNAPSHOT reads and sets compatibility level 170.
 
    The firewall rule is removed when the script ends.
 
-5. **Deploy the API:** `azd deploy api`. Check `$(azd env get-value SERVICE_API_URI)/api/v1/health/live`, then `/api/v1/evidence`.
+5. **Load the dataset.** The seeder signs the chains with the Key Vault key, which it receives through the environment only. Open a firewall rule for its run:
 
-6. **Deploy the SPA on Vercel.** Import the repository and leave Root Directory at the repository root; the root `vercel.json` builds `frontend/`.
+   ```bash
+   rg="$(azd env get-value AZURE_RESOURCE_GROUP)"; sql="$(azd env get-value SQL_SERVER_NAME)"; kv="$(azd env get-value KEY_VAULT_NAME)"
+   ip="$(curl -fsS https://api.ipify.org)"
+   az sql server firewall-rule create -g "$rg" -s "$sql" -n laptop --start-ip-address "$ip" --end-ip-address "$ip" -o none
+   Integrity__ActiveKeyId=k1 \
+   Integrity__Keys__k1="$(az keyvault secret show --vault-name "$kv" -n Integrity--Keys--k1 --query value -o tsv)" \
+     dotnet run --project backend/tools/EvidenceChain.Seeder -c Release -- seed --reset --seed 42 \
+     --connection "Server=tcp:$(azd env get-value SQL_SERVER_FQDN),1433;Database=$(azd env get-value SQL_DATABASE_NAME);Authentication=Active Directory Default;Encrypt=True;"
+   az sql server firewall-rule delete -g "$rg" -s "$sql" -n laptop -o none
+   ```
+
+   `--reset` replaces everything in the database. The seed is anchored to today, so seed within a day of a demo: only the overdue fixture is then overdue.
+
+6. **Deploy the API:** `azd deploy api`. Check `$(azd env get-value SERVICE_API_URI)/api/v1/health/live`, then `/api/v1/evidence` with a token from `POST /api/v1/auth/token` (body `{"userName": "supervisor.demo"}`).
+
+7. **Deploy the SPA on Vercel.** Import the repository and leave Root Directory at the repository root; the root `vercel.json` builds `frontend/`.
    - Set `VITE_API_BASE_URL` to the `SERVICE_API_URI` value.
    - Set the Node.js version to 24.x (Project Settings → Build and Deployment).
 
@@ -56,6 +70,10 @@ Approximate cost while running: **≈ $45/month** at US list prices (B1 ≈ $12.
    azd env set CORS_ORIGIN https://<project>.vercel.app
    azd provision
    ```
+
+## Teardown
+
+`azd down --purge` deletes the resource group and purges the Key Vault, so its name can be reused at once.
 
 ## Parameters (azd environment variables)
 
