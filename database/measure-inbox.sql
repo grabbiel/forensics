@@ -1,9 +1,10 @@
--- Measures the inbox query (GET /api/v1/evidence) as EF Core sends it, under SET STATISTICS IO, TIME ON:
--- the first page, a custodian-filtered page, a text search, and the last page reached by keyset (what the API does)
--- and by OFFSET (the alternative it does not use). Read each step's "logical reads" and "elapsed time" lines.
+-- Measures the inbox query (GET /api/v1/evidence) as EF Core sends it: the first page, a custodian-filtered page, a
+-- text search, and the last page, fetched once by keyset with its cursor supplied (what the API does) and once by OFFSET
+-- (the alternative it does not use). Each step prints its logical reads, elapsed time and executed plan.
+-- Needs go-sqlcmd (brew install sqlcmd):
 --
---   sqlcmd -S localhost,1433 -U sa -P 'DevOnly_Passw0rd!2026' -C -d EvidenceChain -i database/measure-inbox.sql \
---     | grep -E '^[0-9]\.|logical reads|elapsed time'
+--   sqlcmd -S localhost,1433 -U sa -P 'DevOnly_Passw0rd!2026' -C -d EvidenceChain -W -i database/measure-inbox.sql \
+--     | grep -E '^[0-9]\.|logical reads|elapsed time|\|--'
 SET NOCOUNT ON;
 
 DECLARE @page int = 26; -- 25 rows, plus one that says whether another page follows
@@ -24,7 +25,7 @@ DECLARE @newestFirst nvarchar(100) = N' ORDER BY [e].[LastEventAtUtc] DESC, [e].
 DECLARE @sql nvarchar(max);
 
 PRINT CONCAT('EvidenceInbox rows: ', @rows, '; last page starts after row ', @depth);
-SET STATISTICS IO, TIME ON;
+SET STATISTICS IO, TIME, PROFILE ON;
 
 PRINT '1. First page';
 SET @sql = @select + @newestFirst;
@@ -34,11 +35,11 @@ PRINT '2. First page for one custodian';
 SET @sql = @select + N' WHERE [e].[CurrentCustodianId] = @custodianId' + @newestFirst;
 EXEC sp_executesql @sql, N'@p int, @custodianId int', @p = @page, @custodianId = @custodianId;
 
-PRINT '3. Text search (code prefix or description)';
+PRINT '3. Text search for "firewall" (also tried as a code prefix, as the API does)';
 SET @sql = @select + N' WHERE [e].[Code] LIKE @prefix ESCAPE ''\'' OR [e].[Description] LIKE @contains ESCAPE N''\''' + @newestFirst;
 EXEC sp_executesql @sql, N'@p int, @prefix varchar(15), @contains nvarchar(500)', @p = @page, @prefix = 'FIREWALL%', @contains = N'%firewall%';
 
-PRINT '4. Last page by keyset (the cursor carries the previous page''s last row)';
+PRINT '4. Last page by keyset (one page; the cursor, the previous page''s last row, is supplied)';
 SET @sql = @select + N' WHERE [e].[LastEventAtUtc] < @at OR ([e].[LastEventAtUtc] = @at AND [e].[EvidenceId] < @id)' + @newestFirst;
 EXEC sp_executesql @sql, N'@p int, @at datetime2(7), @id bigint', @p = @page, @at = @at, @id = @id;
 
@@ -46,4 +47,4 @@ PRINT '5. Last page by OFFSET (not used: it reads every skipped row)';
 SET @sql = REPLACE(@select, N'TOP(@p) ', N'') + @newestFirst + N' OFFSET @skip ROWS FETCH NEXT @p ROWS ONLY';
 EXEC sp_executesql @sql, N'@p int, @skip int', @p = @page, @skip = @depth;
 
-SET STATISTICS IO, TIME OFF;
+SET STATISTICS IO, TIME, PROFILE OFF;
