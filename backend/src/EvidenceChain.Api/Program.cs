@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+using EvidenceChain.Api.OpenApi;
 using EvidenceChain.Api.Security;
 using EvidenceChain.Infrastructure;
 
@@ -10,9 +12,12 @@ var connectionString = builder.Configuration.GetConnectionString("Default");
 if (string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException("ConnectionStrings:Default is not configured.");
 
-builder.Services.AddControllers();
+// Numbers are numbers: no quoted integers in requests, and integer-only types in the OpenAPI schema.
+builder.Services.AddControllers().AddJsonOptions(o => o.JsonSerializerOptions.NumberHandling = JsonNumberHandling.Strict);
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.NumberHandling = JsonNumberHandling.Strict);
 builder.Services.AddProblemDetails();
-builder.Services.AddOpenApi();
+// A lambda, not a method group: the XML-comment source generator only intercepts lambdas.
+builder.Services.AddOpenApi(options => OpenApiDocumentSetup.Configure(options));
 builder.Services.AddHealthChecks(); // liveness only: must never touch SQL (keeps serverless/auto-pause idle)
 builder.Services.AddInfrastructure(connectionString);
 

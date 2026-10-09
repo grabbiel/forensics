@@ -16,7 +16,7 @@ public sealed class EvidenceController(IEvidenceInboxQuery inbox) : ControllerBa
     /// <param name="limit">Rows to return, 1 to 50.</param>
     /// <param name="cancellationToken">Aborted when the client cancels.</param>
     [HttpGet]
-    [ProducesResponseType<IReadOnlyList<EvidenceSummary>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<IReadOnlyList<EvidenceSummary>>(StatusCodes.Status200OK, "application/json")]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest, "application/problem+json")]
     public async Task<ActionResult<IReadOnlyList<EvidenceSummary>>> List(
         [FromQuery, StringLength(100)] string? q,
