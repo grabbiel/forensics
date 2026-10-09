@@ -83,6 +83,72 @@ paths:
                 $ref: '#/components/schemas/ProblemDetails'
       security:
         - Bearer: [ ]
+  '/api/v1/evidence/{id}':
+    get:
+      tags:
+        - Evidence
+      summary: 'One evidence: content, custodians, integrity, the transfer waiting on its recipient and any anomalies.'
+      parameters:
+        - name: id
+          in: path
+          description: 'The evidence code, e.g. LOG202609110007.'
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceDetail'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+      security:
+        - Bearer: [ ]
+  '/api/v1/evidence/{id}/chain':
+    get:
+      tags:
+        - Evidence
+      summary: 'The custody timeline: every event in sequence order, with its MAC.'
+      parameters:
+        - name: id
+          in: path
+          description: 'The evidence code, e.g. LOG202609110007.'
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceChainView'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+      security:
+        - Bearer: [ ]
   /api/v1/auth/token:
     post:
       tags:
@@ -116,6 +182,177 @@ paths:
                 $ref: '#/components/schemas/ValidationProblemDetails'
 components:
   schemas:
+    AnomalySeverity:
+      enum:
+        - Medium
+        - High
+    AnomalyView:
+      required:
+        - transferId
+        - kind
+        - severity
+        - requestedAtUtc
+        - elapsedSeconds
+        - deadlineSeconds
+        - explanation
+      type: object
+      properties:
+        transferId:
+          type: integer
+          format: int64
+        kind:
+          $ref: '#/components/schemas/TransferAnomalyKind'
+        severity:
+          $ref: '#/components/schemas/AnomalySeverity'
+        requestedAtUtc:
+          type: string
+          format: date-time
+        elapsedSeconds:
+          type: integer
+          format: int64
+        deadlineSeconds:
+          type: integer
+          format: int64
+        explanation:
+          type: string
+    ChainEventView:
+      required:
+        - eventId
+        - seq
+        - kind
+        - occurredAtUtc
+        - actor
+        - from
+        - to
+        - transferId
+        - notes
+        - keyId
+        - mac
+        - prevMac
+      type: object
+      properties:
+        eventId:
+          type: integer
+          format: int64
+        seq:
+          type: integer
+          format: int32
+        kind:
+          $ref: '#/components/schemas/CustodyEventKind'
+        occurredAtUtc:
+          type: string
+          format: date-time
+        actor:
+          $ref: '#/components/schemas/PersonRef'
+        from:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/PersonRef'
+        to:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/PersonRef'
+        transferId:
+          type:
+            - 'null'
+            - integer
+          format: int64
+        notes:
+          type: string
+        keyId:
+          type: string
+        mac:
+          type: string
+        prevMac:
+          type:
+            - 'null'
+            - string
+    ContentSummary:
+      required:
+        - sha256
+        - byteLength
+        - mediaType
+      type: object
+      properties:
+        sha256:
+          type: string
+        byteLength:
+          type: integer
+          format: int32
+        mediaType:
+          type: string
+    CustodyEventKind:
+      enum:
+        - EvidenceRegistered
+        - TransferRequested
+        - TransferAccepted
+        - TransferRejected
+    EvidenceChainView:
+      required:
+        - code
+        - events
+      type: object
+      properties:
+        code:
+          type: string
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChainEventView'
+    EvidenceDetail:
+      required:
+        - code
+        - typeCode
+        - description
+        - capturedAtUtc
+        - registeredAtUtc
+        - registeredBy
+        - initialCustodian
+        - currentCustodian
+        - eventCount
+        - lastEventAtUtc
+        - content
+        - integrity
+        - pendingTransfer
+        - anomalies
+      type: object
+      properties:
+        code:
+          type: string
+        typeCode:
+          type: string
+        description:
+          type: string
+        capturedAtUtc:
+          type: string
+          format: date-time
+        registeredAtUtc:
+          type: string
+          format: date-time
+        registeredBy:
+          $ref: '#/components/schemas/PersonRef'
+        initialCustodian:
+          $ref: '#/components/schemas/PersonRef'
+        currentCustodian:
+          $ref: '#/components/schemas/PersonRef'
+        eventCount:
+          type: integer
+          format: int32
+        lastEventAtUtc:
+          type: string
+          format: date-time
+        content:
+          $ref: '#/components/schemas/ContentSummary'
+        integrity:
+          $ref: '#/components/schemas/IntegritySummary'
+        pendingTransfer:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/TransferView'
+        anomalies:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnomalyView'
     EvidenceSummary:
       required:
         - code
@@ -174,6 +411,25 @@ components:
         - Unverified
         - Valid
         - Invalid
+    IntegritySummary:
+      required:
+        - status
+        - checkedAtUtc
+        - checkedThroughSeq
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/IntegrityStatus'
+        checkedAtUtc:
+          type:
+            - 'null'
+            - string
+          format: date-time
+        checkedThroughSeq:
+          type:
+            - 'null'
+            - integer
+          format: int32
     PendingTransferSummary:
       required:
         - transferId
@@ -253,6 +509,45 @@ components:
         user:
           $ref: '#/components/schemas/UserSummary'
       description: 'A bearer token for the Authorization header, when it expires, and who it names.'
+    TransferAnomalyKind:
+      enum:
+        - Overdue
+        - AcceptedLate
+    TransferStatus:
+      enum:
+        - Pending
+        - Accepted
+        - Rejected
+    TransferView:
+      required:
+        - transferId
+        - status
+        - from
+        - to
+        - requestedBy
+        - requestedAtUtc
+        - reason
+        - etag
+      type: object
+      properties:
+        transferId:
+          type: integer
+          format: int64
+        status:
+          $ref: '#/components/schemas/TransferStatus'
+        from:
+          $ref: '#/components/schemas/PersonRef'
+        to:
+          $ref: '#/components/schemas/PersonRef'
+        requestedBy:
+          $ref: '#/components/schemas/PersonRef'
+        requestedAtUtc:
+          type: string
+          format: date-time
+        reason:
+          type: string
+        etag:
+          type: string
     UserRole:
       enum:
         - Investigador

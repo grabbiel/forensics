@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using EvidenceChain.Api.Inbox;
 using EvidenceChain.Application.Inbox;
+using EvidenceChain.Application.Review;
 using EvidenceChain.Domain.Catalog;
 using EvidenceChain.Domain.Custody;
 using Microsoft.AspNetCore.Authorization;
@@ -12,7 +13,7 @@ namespace EvidenceChain.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/v1/evidence")]
-public sealed class EvidenceController(IEvidenceInboxQuery inbox) : ControllerBase
+public sealed class EvidenceController(IEvidenceInboxQuery inbox, IEvidenceQueries evidence) : ControllerBase
 {
     private const string NewestFirst = "lastEventAt:desc";
     private const string OldestFirst = "lastEventAt:asc";
@@ -58,6 +59,30 @@ public sealed class EvidenceController(IEvidenceInboxQuery inbox) : ControllerBa
         var page = await inbox.ListAsync(filter, cancellationToken);
         return Ok(new InboxPageResponse(page.Items, page.Next is { } next ? InboxCursor.Encode(next, filter) : null));
     }
+
+    /// <summary>One evidence: content, custodians, integrity, the transfer waiting on its recipient and any anomalies.</summary>
+    /// <param name="id">The evidence code, e.g. LOG202609110007.</param>
+    /// <param name="cancellationToken">Aborted when the client cancels.</param>
+    [HttpGet("{id}")]
+    [ProducesResponseType<EvidenceDetail>(StatusCodes.Status200OK, "application/json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound, "application/problem+json")]
+    public async Task<ActionResult<EvidenceDetail>> Get(string id, CancellationToken cancellationToken) =>
+        await evidence.GetDetailAsync(Normalize(id), cancellationToken) is { } detail ? Ok(detail) : NotFoundProblem(id);
+
+    /// <summary>The custody timeline: every event in sequence order, with its MAC.</summary>
+    /// <param name="id">The evidence code, e.g. LOG202609110007.</param>
+    /// <param name="cancellationToken">Aborted when the client cancels.</param>
+    [HttpGet("{id}/chain")]
+    [ProducesResponseType<EvidenceChainView>(StatusCodes.Status200OK, "application/json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound, "application/problem+json")]
+    public async Task<ActionResult<EvidenceChainView>> Chain(string id, CancellationToken cancellationToken) =>
+        await evidence.GetChainAsync(Normalize(id), cancellationToken) is { } chain ? Ok(chain) : NotFoundProblem(id);
+
+    /// <summary>Codes are upper-case under a binary collation.</summary>
+    private static string Normalize(string id) => id.Trim().ToUpperInvariant();
+
+    private ObjectResult NotFoundProblem(string id) =>
+        Problem(statusCode: StatusCodes.Status404NotFound, detail: $"No evidence has the code '{id}'.");
 }
 
 /// <summary>A page of the inbox; nextCursor is null on the last page.</summary>
