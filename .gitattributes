@@ -3,4 +3,5 @@
 
 # Evidence bytes are hashed: Git must never normalise them.
 database/synthetic/samples/** -text
+database/synthetic/manifest.reference.csv -text
 **/fixtures/** -text

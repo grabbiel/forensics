@@ -1,0 +1,12 @@
+<134>1 2026-07-01T00:01:15.143Z fw-core-01.example.test filterlog 8836 - - action=ALLOW proto=TCP src=192.0.2.185 spt=56287 dst=198.51.100.27 dpt=25 bytes=20951
+<134>1 2026-07-01T00:01:38.505Z fw-core-01.example.test filterlog 8836 - - action=ALLOW proto=TCP src=192.0.2.11 spt=53953 dst=198.51.100.232 dpt=443 bytes=22990
+<134>1 2026-07-01T00:02:54.331Z fw-core-01.example.test filterlog 8836 - - action=ALLOW proto=TCP src=192.0.2.17 spt=61236 dst=198.51.100.122 dpt=8443 bytes=16349
+<134>1 2026-07-01T00:03:09.630Z fw-core-01.example.test filterlog 8836 - - action=ALLOW proto=TCP src=192.0.2.10 spt=50208 dst=198.51.100.239 dpt=22 bytes=14064
+<134>1 2026-07-01T00:05:08.369Z fw-core-01.example.test filterlog 8836 - - action=ALLOW proto=UDP src=192.0.2.84 spt=60363 dst=198.51.100.233 dpt=53 bytes=6157
+<134>1 2026-07-01T00:05:25.209Z fw-core-01.example.test filterlog 8836 - - action=ALLOW proto=TCP src=192.0.2.75 spt=54948 dst=198.51.100.142 dpt=22 bytes=23441
+<134>1 2026-07-01T00:05:40.006Z fw-core-01.example.test filterlog 8836 - - action=ALLOW proto=TCP src=192.0.2.81 spt=53701 dst=198.51.100.212 dpt=25 bytes=16029
+<134>1 2026-07-01T00:07:06.366Z fw-core-01.example.test filterlog 8836 - - action=ALLOW proto=UDP src=192.0.2.92 spt=64276 dst=198.51.100.62 dpt=53 bytes=7997
+<134>1 2026-07-01T00:09:14.703Z fw-core-01.example.test filterlog 8836 - - action=ALLOW proto=UDP src=192.0.2.236 spt=60367 dst=198.51.100.33 dpt=53 bytes=21031
+<134>1 2026-07-01T00:11:41.420Z fw-core-01.example.test filterlog 8836 - - action=ALLOW proto=TCP src=192.0.2.27 spt=57383 dst=198.51.100.242 dpt=8443 bytes=17701
+<134>1 2026-07-01T00:12:01.540Z fw-core-01.example.test filterlog 8836 - - action=ALLOW proto=TCP src=192.0.2.105 spt=54429 dst=198.51.100.149 dpt=22 bytes=4547
+<134>1 2026-07-01T00:13:49.117Z fw-core-01.example.test filterlog 8836 - - action=ALLOW proto=UDP src=192.0.2.118 spt=58436 dst=198.51.100.219 dpt=53 bytes=15261

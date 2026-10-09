@@ -15,7 +15,7 @@ indent_size = 4
 trim_trailing_whitespace = false
 
 # Evidence samples and fixtures are byte-exact: leave them alone.
-[{database/synthetic/samples/**,**/fixtures/**}]
+[{database/synthetic/samples/**,database/synthetic/manifest.reference.csv,**/fixtures/**}]
 charset = unset
 end_of_line = unset
 indent_style = unset
