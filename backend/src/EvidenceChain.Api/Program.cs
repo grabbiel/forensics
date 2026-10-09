@@ -4,6 +4,7 @@ using EvidenceChain.Api.Auth;
 using EvidenceChain.Api.OpenApi;
 using EvidenceChain.Api.Problems;
 using EvidenceChain.Api.Security;
+using EvidenceChain.Api.Telemetry;
 using EvidenceChain.Application.Anomalies;
 using EvidenceChain.Domain.Anomalies;
 using EvidenceChain.Infrastructure;
@@ -34,6 +35,7 @@ builder.Services.AddOpenApi(options => OpenApiDocumentSetup.Configure(options));
 builder.Services.AddHealthChecks(); // liveness only: must never touch SQL (keeps serverless/auto-pause idle)
 builder.Services.AddInfrastructure(connectionString);
 builder.Services.AddEvidenceChainAuth();
+builder.Services.AddEvidenceChainTelemetry(builder.Configuration);
 
 // Anomaly rules read the deadline from configuration and the time from an injectable clock.
 builder.Services.AddSingleton(TimeProvider.System);

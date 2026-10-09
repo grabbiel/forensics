@@ -51,10 +51,8 @@ resource webApp 'Microsoft.Web/sites@2025-03-01' = {
       healthCheckPath: '/api/v1/health/live'
       appSettings: concat(
         [
+          // The app exports through OpenTelemetry (Azure Monitor distro) when this is set; no codeless agent.
           { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.properties.ConnectionString }
-          // Codeless agent until the app ships its own OpenTelemetry exporter; then remove it.
-          { name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: '~3' }
-          { name: 'XDT_MicrosoftApplicationInsights_Mode', value: 'recommended' }
           {
             name: 'ConnectionStrings__Default'
             value: 'Server=tcp:${sqlServerFqdn},1433;Database=${sqlDatabaseName};Authentication=Active Directory Managed Identity;Encrypt=True;'
