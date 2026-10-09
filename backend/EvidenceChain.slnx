@@ -1,2 +1,5 @@
 <Solution>
+  <Folder Name="/src/">
+    <Project Path="src/EvidenceChain.Domain/EvidenceChain.Domain.csproj" />
+  </Folder>
 </Solution>
