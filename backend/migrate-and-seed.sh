@@ -9,7 +9,7 @@ set -eu
 echo "1/3 Applying migrations"
 ./efbundle --connection "$ADMIN_CONNECTION"
 
-echo "2/3 Preparing database (RCSI, app login)"
+echo "2/3 Preparing database (RCSI, snapshot isolation, app login)"
 dotnet seeder/EvidenceChain.Seeder.dll prepare --connection "$ADMIN_CONNECTION" \
   --app-login "$APP_DB_LOGIN" --app-password "$APP_DB_PASSWORD"
 

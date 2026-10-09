@@ -34,6 +34,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
             await using var connection = new SqlConnection(RequireConnection());
             await connection.OpenAsync(cancellationToken);
             await DatabasePreparation.EnableReadCommittedSnapshotAsync(connection, cancellationToken);
+            await DatabasePreparation.EnableSnapshotIsolationAsync(connection, cancellationToken);
 
             if (options.TryGetValue("app-login", out var login))
             {

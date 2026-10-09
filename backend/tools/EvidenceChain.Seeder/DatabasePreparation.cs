@@ -16,6 +16,19 @@ internal static class DatabasePreparation
         await ExecuteAsync(connection, sql, [], cancellationToken);
     }
 
+    /// <summary>
+    /// Allows SNAPSHOT transactions, which the API's multi-statement reads use so a write committing between two
+    /// statements cannot make a sound chain look broken; a no-op when already on (Azure SQL default).
+    /// </summary>
+    public static async Task EnableSnapshotIsolationAsync(SqlConnection connection, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            IF (SELECT snapshot_isolation_state FROM sys.databases WHERE name = DB_NAME()) = 0
+                ALTER DATABASE CURRENT SET ALLOW_SNAPSHOT_ISOLATION ON;
+            """;
+        await ExecuteAsync(connection, sql, [], cancellationToken);
+    }
+
     /// <summary>Creates (or re-passwords) the API's least-privilege SQL login and user (local Docker only).</summary>
     public static async Task CreateAppLoginAsync(SqlConnection connection, string login, string password, CancellationToken cancellationToken)
     {
@@ -42,11 +55,15 @@ internal static class DatabasePreparation
             SET @sql = N'ALTER ROLE db_datareader ADD MEMBER ' + @quotedLogin;
             EXEC sys.sp_executesql @sql;
 
+            -- Verification records its verdict, and only that, in the inbox projection.
+            SET @sql = N'GRANT UPDATE ON dbo.EvidenceInbox (IntegrityStatus, IntegrityCheckedAtUtc, IntegrityCheckedThroughSeq) TO ' + @quotedLogin;
+            EXEC sys.sp_executesql @sql;
+
             -- Explicit DENY outlives any later write grant: the app can never rewrite custody history.
             SET @sql = N'DENY UPDATE, DELETE ON dbo.CustodyEvents TO ' + @quotedLogin;
             EXEC sys.sp_executesql @sql;
             """;
-        // Read-only for now; write endpoints add INSERT per table, and CustodyEvents keeps its DENY.
+        // Reads plus verification verdicts for now; write endpoints add INSERT per table, and CustodyEvents keeps its DENY.
         await ExecuteAsync(connection, sql,
         [
             new SqlParameter("@login", SqlDbType.NVarChar, 128) { Value = login },

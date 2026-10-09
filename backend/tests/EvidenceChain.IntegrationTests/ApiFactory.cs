@@ -79,8 +79,13 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     public async Task<string> CreateDatabaseAsync(string name, CancellationToken cancellationToken = default)
     {
         var connectionString = new SqlConnectionStringBuilder(AdminConnectionString) { InitialCatalog = name }.ConnectionString;
-        await using var db = SqlServerSetup.CreateContext(connectionString);
-        await db.Database.MigrateAsync(cancellationToken);
+        await using (var db = SqlServerSetup.CreateContext(connectionString))
+            await db.Database.MigrateAsync(cancellationToken);
+
+        // The API's multi-statement reads use SNAPSHOT transactions.
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await DatabasePreparation.EnableSnapshotIsolationAsync(connection, cancellationToken);
         return connectionString;
     }
 
@@ -89,13 +94,16 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         new(type, DateOnly.FromDateTime(registeredAtUtc), 1, description, registeredAtUtc.AddHours(-1), registeredAtUtc,
             registeredById: 1, initialCustodianId: 4, new EvidenceContent(System.Text.Encoding.UTF8.GetBytes(description), "text/plain; charset=utf-8"));
 
-    /// <summary>Runs the seeder's prepare step (RCSI and the app login) as sa.</summary>
-    public async Task PrepareAsync(CancellationToken cancellationToken = default)
+    /// <summary>Runs the seeder's prepare step (RCSI, snapshot isolation and the app login) as sa.</summary>
+    public Task PrepareAsync(CancellationToken cancellationToken = default) => PrepareAsync(AdminConnectionString!, cancellationToken);
+
+    private static async Task PrepareAsync(string adminConnectionString, CancellationToken cancellationToken)
     {
-        await using (var connection = new SqlConnection(AdminConnectionString))
+        await using (var connection = new SqlConnection(adminConnectionString))
         {
             await connection.OpenAsync(cancellationToken);
             await DatabasePreparation.EnableReadCommittedSnapshotAsync(connection, cancellationToken);
+            await DatabasePreparation.EnableSnapshotIsolationAsync(connection, cancellationToken);
             await DatabasePreparation.CreateAppLoginAsync(connection, AppLogin, AppPassword, cancellationToken);
         }
 
