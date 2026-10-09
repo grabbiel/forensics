@@ -25,7 +25,8 @@ public sealed class ProbeController : ControllerBase
     [HttpGet("throw/{kind}")]
     public IActionResult Throw(string kind) => throw kind switch
     {
-        "pending-exists" => new InvalidTransitionException(TransferCommand.Request, null),
+        "pending-unknown" => new InvalidTransitionException(TransferCommand.Request, null),
+        "pending-exists" => new InvalidTransitionException(TransferCommand.Request, PendingTransfer()),
         "already-accepted" => new InvalidTransitionException(TransferCommand.Accept, AcceptedTransfer()),
         "stale" => new StaleVersionException(AcceptedTransfer()),
         "not-recipient" => new NotRecipientException(TransferCommand.Accept),
@@ -36,15 +37,21 @@ public sealed class ProbeController : ControllerBase
         _ => new InvalidOperationException("Unexpected failure with a secret detail."),
     };
 
-    /// <summary>Transfer 7: requested by user 1 from custodian 5 to custodio.demo (4), who accepted it at 10:00 UTC.</summary>
-    public static CustodyTransfer AcceptedTransfer()
+    /// <summary>Transfer 7: requested by investigador.demo (1) at 09:00 UTC from custodian 5 to custodio.demo (4), who accepted it at 10:00 UTC.</summary>
+    public static CustodyTransfer AcceptedTransfer() => ProbeTransfer(accept: true);
+
+    /// <summary>Transfer 7 before custodio.demo decided it.</summary>
+    public static CustodyTransfer PendingTransfer() => ProbeTransfer(accept: false);
+
+    private static CustodyTransfer ProbeTransfer(bool accept)
     {
         var at = new DateTime(2026, 10, 9, 8, 0, 0, DateTimeKind.Utc);
         var evidence = new Evidence(EvidenceTypes.Log, DateOnly.FromDateTime(at), 1, "Probe", at, at,
             registeredById: 1, initialCustodianId: 5, new EvidenceContent([1], "text/plain"));
         var transfer = CustodyTransfer.Request(evidence, new Actor(1, UserRole.Investigador), new Actor(4, UserRole.Custodio),
-            hasPendingTransfer: false, at.AddHours(1), "Probe", Guid.CreateVersion7(), new byte[32]);
-        transfer.Accept(evidence, new Actor(4, UserRole.Custodio), at.AddHours(2), null, Guid.CreateVersion7(), new byte[32]);
+            pendingTransfer: null, at.AddHours(1), "Probe", Guid.CreateVersion7(), new byte[32]);
+        if (accept)
+            transfer.Accept(evidence, new Actor(4, UserRole.Custodio), at.AddHours(2), null, Guid.CreateVersion7(), new byte[32]);
 
         // What the database would have assigned.
         typeof(CustodyTransfer).GetProperty(nameof(CustodyTransfer.TransferId))!.SetValue(transfer, 7L);

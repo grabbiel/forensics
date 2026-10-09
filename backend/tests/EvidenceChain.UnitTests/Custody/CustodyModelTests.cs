@@ -29,7 +29,7 @@ public sealed class CustodyModelTests
         new(EvidenceTypes.Log, DateOnly.FromDateTime(Requested), 1, "Log", Requested.AddHours(-1), Requested.AddMinutes(-30), 1, 4, new EvidenceContent([1], "text/plain"));
 
     private static CustodyTransfer RequestTo5(Evidence evidence) =>
-        CustodyTransfer.Request(evidence, Investigator, Recipient, hasPendingTransfer: false, Requested, "Análisis", Guid.CreateVersion7(), Hash(1));
+        CustodyTransfer.Request(evidence, Investigator, Recipient, pendingTransfer: null, Requested, "Análisis", Guid.CreateVersion7(), Hash(1));
 
     [Fact]
     public void A_request_starts_from_the_current_custodian_and_needs_an_investigator_and_another_custodio()
@@ -38,11 +38,14 @@ public sealed class CustodyModelTests
         var transfer = RequestTo5(evidence);
 
         Assert.Equal((4, 5, 1, TransferStatus.Pending), (transfer.FromCustodianId, transfer.ToCustodianId, transfer.RequestedById, transfer.Status));
-        Assert.Throws<RoleNotAllowedException>(() => CustodyTransfer.Request(evidence, Holder, Recipient, false, Requested, "x", Guid.CreateVersion7(), Hash(1)));
-        Assert.Throws<InvalidTransitionException>(() => CustodyTransfer.Request(evidence, Investigator, Recipient, hasPendingTransfer: true, Requested, "x", Guid.CreateVersion7(), Hash(1)));
-        Assert.Throws<ArgumentException>(() => CustodyTransfer.Request(evidence, Investigator, Holder, false, Requested, "x", Guid.CreateVersion7(), Hash(1)));
-        Assert.Throws<ArgumentException>(() => CustodyTransfer.Request(evidence, Investigator, new Actor(10, UserRole.Supervisor), false, Requested, "x", Guid.CreateVersion7(), Hash(1)));
-        Assert.Throws<ArgumentException>(() => CustodyTransfer.Request(evidence, Investigator, Investigator with { Role = UserRole.Custodio }, false, Requested, "x", Guid.CreateVersion7(), Hash(1)));
+        Assert.Throws<RoleNotAllowedException>(() => CustodyTransfer.Request(evidence, Holder, Recipient, null, Requested, "x", Guid.CreateVersion7(), Hash(1)));
+        var refused = Assert.Throws<InvalidTransitionException>(() => CustodyTransfer.Request(evidence, Investigator, Recipient, pendingTransfer: transfer, Requested, "x", Guid.CreateVersion7(), Hash(1)));
+        Assert.Same(transfer, refused.Transfer); // the 409 can show the open request
+        transfer.Reject(evidence, Recipient, Requested.AddHours(1), "No", Guid.CreateVersion7(), Hash(2));
+        Assert.Throws<ArgumentException>(() => CustodyTransfer.Request(evidence, Investigator, Recipient, pendingTransfer: transfer, Requested, "x", Guid.CreateVersion7(), Hash(1)));
+        Assert.Throws<ArgumentException>(() => CustodyTransfer.Request(evidence, Investigator, Holder, null, Requested, "x", Guid.CreateVersion7(), Hash(1)));
+        Assert.Throws<ArgumentException>(() => CustodyTransfer.Request(evidence, Investigator, new Actor(10, UserRole.Supervisor), null, Requested, "x", Guid.CreateVersion7(), Hash(1)));
+        Assert.Throws<ArgumentException>(() => CustodyTransfer.Request(evidence, Investigator, Investigator with { Role = UserRole.Custodio }, null, Requested, "x", Guid.CreateVersion7(), Hash(1)));
     }
 
     [Fact]

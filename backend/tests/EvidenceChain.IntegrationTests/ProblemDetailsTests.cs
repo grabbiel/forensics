@@ -24,7 +24,7 @@ public sealed class ProblemDetailsTests(ApiFactory factory)
     }
 
     [Theory]
-    [InlineData("pending-exists", 409, ProblemTypes.InvalidTransition)]
+    [InlineData("pending-unknown", 409, ProblemTypes.InvalidTransition)]
     [InlineData("in-flight", 409, ProblemTypes.IdempotencyInFlight)]
     [InlineData("exhausted", 409, ProblemTypes.DailyIndexExhausted)]
     [InlineData("key-reused", 422, ProblemTypes.IdempotencyKeyReused)]
@@ -40,9 +40,10 @@ public sealed class ProblemDetailsTests(ApiFactory factory)
     }
 
     [Theory]
-    [InlineData("already-accepted", ProblemTypes.InvalidTransition)]
-    [InlineData("stale", ProblemTypes.StaleVersion)]
-    public async Task A_transfer_conflict_says_what_it_is_now_who_acted_when_and_its_etag(string kind, string type)
+    [InlineData("already-accepted", ProblemTypes.InvalidTransition, "Accepted", "custodio.demo", "2026-10-09T10:00:00Z")]
+    [InlineData("stale", ProblemTypes.StaleVersion, "Accepted", "custodio.demo", "2026-10-09T10:00:00Z")]
+    [InlineData("pending-exists", ProblemTypes.InvalidTransition, "Pending", "investigador.demo", "2026-10-09T09:00:00Z")] // the open request
+    public async Task A_transfer_conflict_says_what_it_is_now_who_acted_when_and_its_etag(string kind, string type, string status, string actedBy, string actedAt)
     {
         Assert.SkipWhen(factory.SkipReason is not null, factory.SkipReason ?? ""); // actedBy is read from the database
 
@@ -54,13 +55,10 @@ public sealed class ProblemDetailsTests(ApiFactory factory)
         Assert.Equal(ProbeController.TransferETag, problem.GetProperty("currentETag").GetString());
 
         var state = problem.GetProperty("currentState");
-        Assert.Equal((7L, "Accepted", 5, 4, 4), (state.GetProperty("transferId").GetInt64(), state.GetProperty("status").GetString(),
-            state.GetProperty("fromCustodianId").GetInt32(), state.GetProperty("toCustodianId").GetInt32(), state.GetProperty("decidedById").GetInt32()));
-
-        var actedBy = problem.GetProperty("actedBy");
-        Assert.Equal(("custodio.demo", "Diego Salas", "Custodio"),
-            (actedBy.GetProperty("userName").GetString(), actedBy.GetProperty("displayName").GetString(), actedBy.GetProperty("role").GetString()));
-        Assert.Equal("2026-10-09T10:00:00Z", problem.GetProperty("actedAtUtc").GetString());
+        Assert.Equal((7L, status, 5, 4), (state.GetProperty("transferId").GetInt64(), state.GetProperty("status").GetString(),
+            state.GetProperty("fromCustodianId").GetInt32(), state.GetProperty("toCustodianId").GetInt32()));
+        Assert.Equal(actedBy, problem.GetProperty("actedBy").GetProperty("userName").GetString());
+        Assert.Equal(actedAt, problem.GetProperty("actedAtUtc").GetString());
     }
 
     private async Task<JsonElement> ProblemAsync(string path, int status) =>

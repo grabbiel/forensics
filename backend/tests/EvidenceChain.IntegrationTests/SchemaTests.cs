@@ -233,7 +233,7 @@ public sealed class SchemaTests(ApiFactory factory)
 
     /// <summary>A request from the evidence's current custodian; pending checks are left to the database here.</summary>
     private static CustodyTransfer NewTransfer(Evidence evidence, int to = OtherCustodian, Guid? key = null) =>
-        CustodyTransfer.Request(evidence, new Actor(Investigator, UserRole.Investigador), new Actor(to, UserRole.Custodio), hasPendingTransfer: false,
+        CustodyTransfer.Request(evidence, new Actor(Investigator, UserRole.Investigador), new Actor(to, UserRole.Custodio), pendingTransfer: null,
             Registered.AddHours(1), "Análisis en laboratorio", key ?? Guid.CreateVersion7(), Mac());
 
     private static async Task<CustodyTransfer> AddTransferAsync(AppDbContext db, Evidence evidence)
