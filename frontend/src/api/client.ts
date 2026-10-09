@@ -14,13 +14,29 @@ export interface ProblemDetails {
 export class ApiError extends Error {
   readonly status: number
   readonly problem?: ProblemDetails
+  /** On a 429 only: the seconds to wait before trying again. */
+  readonly retryAfterSeconds?: number
 
-  constructor(status: number, problem?: ProblemDetails) {
+  constructor(status: number, problem?: ProblemDetails, retryAfterSeconds?: number) {
     super(problem?.title ?? `Request failed with status ${status}`)
     this.name = 'ApiError'
     this.status = status
     this.problem = problem
+    this.retryAfterSeconds = retryAfterSeconds
   }
+}
+
+/** The wait assumed when a 429 has no readable Retry-After: cross-origin, the browser hides it unless the API exposes it. */
+const DEFAULT_RETRY_AFTER_SECONDS = 5
+
+/** The longest wait the app honours, so a wrong header never locks a button for long. */
+const MAX_RETRY_AFTER_SECONDS = 120
+
+/** Seconds from a Retry-After header in seconds, as the API sends it, kept within 1–120; the default otherwise. */
+function retryAfterSeconds(header: string | null): number {
+  const value = header?.trim() ?? ''
+  if (!/^\d+$/.test(value)) return DEFAULT_RETRY_AFTER_SECONDS
+  return Math.min(MAX_RETRY_AFTER_SECONDS, Math.max(1, Number(value)))
 }
 
 /** A successful write: its status, body and the headers that matter (ETag, Location, Idempotent-Replayed). */
@@ -78,9 +94,10 @@ function headers(base: Record<string, string>): Record<string, string> {
   return token ? { ...base, Authorization: `Bearer ${token}` } : base
 }
 
-/** Builds an ApiError, keeping the problem body only when it really is problem+json. */
+/** Builds an ApiError, keeping the problem body only when it really is problem+json, and a 429's wait. */
 async function toApiError(response: Response): Promise<ApiError> {
   const isProblem = response.headers.get('Content-Type')?.includes('application/problem+json') ?? false
   const problem = isProblem ? ((await response.json().catch(() => undefined)) as ProblemDetails | undefined) : undefined
-  return new ApiError(response.status, problem)
+  const wait = response.status === 429 ? retryAfterSeconds(response.headers.get('Retry-After')) : undefined
+  return new ApiError(response.status, problem, wait)
 }
