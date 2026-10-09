@@ -40,6 +40,7 @@
 
   --z-header: 10;
   --z-skip: 20;
+  --z-dialog: 30;
 
   --font: -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', 'Apple SD Gothic Neo', 'PingFang SC', 'Helvetica Neue', Roboto, sans-serif;
   --mono: 'Geist Mono Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
@@ -572,19 +573,6 @@ svg {
   font: inherit;
 }
 
-.notice {
-  margin: 0 0 16px;
-  padding: 10px 12px;
-  border-radius: var(--radius-control);
-  background: var(--fill);
-}
-
-.notice--error {
-  background: color-mix(in srgb, var(--danger) 9%, var(--surface));
-  color: var(--text);
-  box-shadow: inset 3px 0 0 var(--danger);
-}
-
 /* ---- Account (header) ---- */
 
 .account {
@@ -629,6 +617,10 @@ svg {
 .login__panel {
   width: min(100%, 460px);
   padding: 22px 20px 24px;
+}
+
+.login__panel .notice {
+  margin-bottom: 16px;
 }
 
 .personas {
@@ -1048,30 +1040,230 @@ svg {
   color: var(--text-2);
 }
 
-.pending {
+.facts__wide {
+  grid-column: 1 / -1;
+}
+
+/* ---- Transfers ---- */
+
+.transfers {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  margin: 16px 20px 0;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.transfers .section-title {
+  margin: 0;
+}
+
+.transfers__none {
+  margin: 0;
+  color: var(--text-2);
+}
+
+.transfer {
   display: flex;
   gap: 10px;
-  margin: 16px 20px 0;
+  width: 100%;
+  margin: 0;
   padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-surface);
 }
 
-.pending > svg {
+.transfer p {
+  margin: 0;
+}
+
+.transfer > svg {
   flex: none;
   color: var(--warning);
 }
 
-.pending p {
-  margin: 0;
+.transfer__status {
+  font-weight: 800;
 }
 
-.pending__reason {
+.transfer__reason {
   color: var(--text-2);
 }
 
-.facts__wide {
-  grid-column: 1 / -1;
+.transfer__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Ours, not yet the server's: dashed and muted, never the solid card of a real pending transfer. */
+.transfer--sending,
+.transfer--checking {
+  border-style: dashed;
+  color: var(--text-2);
+}
+
+.transfer--sending > svg,
+.transfer--checking > svg {
+  color: var(--text-3);
+}
+
+.transfer--accepted,
+.transfer--rejected {
+  background: var(--fill);
+}
+
+.transfer[aria-busy='true'] .transfer__status {
+  color: var(--text-2);
+}
+
+/* Outcomes of a write: the sign-in form's error and the transfer panel's answers. */
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 10px;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-control);
+  background: var(--fill);
+  color: var(--text);
+}
+
+.notice p {
+  flex: 1;
+  margin: 0;
+}
+
+.notice__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.notice > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.notice:focus-visible {
+  outline: 2px solid var(--focus);
+}
+
+.notice--success {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--success);
+}
+
+.notice--success > svg {
+  color: var(--success);
+}
+
+.notice--conflict,
+.notice--error {
+  background: color-mix(in srgb, var(--danger) 9%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.notice--conflict > svg,
+.notice--error > svg {
+  color: var(--danger);
+}
+
+.notice--unknown {
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--warning);
+}
+
+.notice--unknown > svg {
+  color: var(--warning);
+}
+
+.button--danger {
+  background: var(--danger);
+}
+
+.button--danger:hover {
+  background: color-mix(in srgb, var(--danger) 85%, black);
+}
+
+/* ---- Dialog ---- */
+
+.dialog__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  background: rgb(0 0 0 / 0.45);
+}
+
+.dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: calc(var(--z-dialog) + 1);
+  width: min(calc(100vw - 32px), 480px);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  translate: -50% -50%;
+  padding: 18px 20px 20px;
+  border-radius: var(--radius-surface);
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--ring), 0 18px 48px rgb(0 0 0 / 0.25);
+}
+
+.dialog:focus-visible {
+  outline: 2px solid var(--focus);
+}
+
+.dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dialog__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.dialog__description {
+  margin: 6px 0 14px;
+  color: var(--text-2);
+}
+
+.dialog__form {
+  display: grid;
+  gap: 6px;
+}
+
+.dialog__form label {
+  margin-top: 6px;
+  font-weight: 600;
+}
+
+.field--area {
+  height: auto;
+  padding-block: 8px;
+  resize: vertical;
+}
+
+.field__error {
+  margin: 4px 0 0;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
 }
 
 /* ---- Skeleton (first load) ---- */
@@ -1248,7 +1440,7 @@ svg {
     padding-inline: 16px;
   }
 
-  .pending {
+  .transfers {
     margin-inline: 16px;
   }
 

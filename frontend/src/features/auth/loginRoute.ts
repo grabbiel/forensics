@@ -4,6 +4,7 @@ import { ApiError } from '../../api/client'
 import { forgetPeople } from '../../api/people'
 import { safeRedirect } from '../../auth/guard'
 import { clearSession, getSession, saveSession } from '../../auth/session'
+import { clearAllIntents } from '../transfers/pendingIntent'
 
 /** Already signed in: go where the user was headed. */
 export function loginLoader({ request }: LoaderFunctionArgs) {
@@ -31,5 +32,6 @@ export async function loginAction({ request }: ActionFunctionArgs) {
 export function logoutAction() {
   clearSession()
   forgetPeople()
+  clearAllIntents()
   return redirect('/login')
 }

@@ -33,12 +33,16 @@ export interface Sent<T> {
 // Empty means same origin: the Vite dev proxy or the nginx container forwards /api.
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 
+/** How long a read may take before it counts as no answer, so a hung connection does not leave a page loading. */
+export const READ_TIMEOUT_MS = 15_000
+
 /**
  * GETs JSON with the signed-in user's token. Never retries: a newer navigation aborts it through `signal`, and
- * every failure surfaces to the caller.
+ * every failure surfaces to the caller; after READ_TIMEOUT_MS it fails as a TimeoutError.
  */
 export async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, { signal, headers: headers({ Accept: 'application/json' }) })
+  const timeout = AbortSignal.timeout(READ_TIMEOUT_MS)
+  const response = await fetch(`${baseUrl}${path}`, { signal: signal ? withTimeout(signal, timeout) : timeout, headers: headers({ Accept: 'application/json' }) })
   if (!response.ok) throw await toApiError(response)
   return (await response.json()) as T
 }
@@ -56,6 +60,16 @@ export async function postJson<T>(path: string, body: unknown, options: { signal
   })
   if (!response.ok) throw await toApiError(response)
   return { status: response.status, body: (await response.json()) as T, headers: response.headers }
+}
+
+/** `signal`, also aborted when `timeout` fires; a fallback where AbortSignal.any is missing (Safari < 17.4). */
+export function withTimeout(signal: AbortSignal, timeout: AbortSignal): AbortSignal {
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any([signal, timeout])
+  const controller = new AbortController()
+  const abort = (source: AbortSignal) => () => controller.abort(source.reason)
+  signal.addEventListener('abort', abort(signal), { once: true })
+  timeout.addEventListener('abort', abort(timeout), { once: true })
+  return controller.signal
 }
 
 /** Adds the bearer token when someone is signed in. */

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { signInAs } from '../test/session'
-import { ApiError, getJson, postJson } from './client'
+import { ApiError, getJson, postJson, READ_TIMEOUT_MS } from './client'
 
 function reply(status: number, body: unknown, contentType = 'application/json', headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': contentType, ...headers } })
@@ -30,6 +30,20 @@ describe('api client', () => {
     expect(gateway).toBeInstanceOf(ApiError)
     expect((gateway as ApiError).status).toBe(502)
     expect((gateway as ApiError).problem).toBeUndefined()
+  })
+
+  it('gives up on a read that hangs, failing with a TimeoutError', async () => {
+    const clock = new AbortController()
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(clock.signal)
+    const hang = (_: unknown, init?: RequestInit) =>
+      new Promise<Response>((_, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal!.reason)))
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(hang))
+
+    const read = getJson('/x', new AbortController().signal).catch((error: unknown) => error)
+    clock.abort(new DOMException('timed out', 'TimeoutError'))
+
+    expect(await read).toMatchObject({ name: 'TimeoutError' })
+    expect(timeout).toHaveBeenCalledWith(READ_TIMEOUT_MS)
   })
 
   it('sends writes once with their headers and never retries a 409', async () => {

@@ -52,6 +52,7 @@ function stubApi(verify: () => Promise<Response>, events = chain.events) {
     if (url === `/api/v1/evidence/${code}`) return json(200, detail)
     if (url === `/api/v1/evidence/${code}/chain`) return json(200, { code, events })
     if (url === `/api/v1/evidence/${code}/chain/verify`) return verify()
+    if (url.startsWith('/api/v1/people')) return json(200, [])
     return json(404, { status: 404 }, 'application/problem+json')
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -61,6 +62,9 @@ function stubApi(verify: () => Promise<Response>, events = chain.events) {
 const report = (overrides: Partial<VerificationReport>): VerificationReport => ({
   code, valid: true, verifiedThroughSeq: 2, eventCount: 2, checkedAtUtc: '2026-10-09T00:00:00Z', firstInvalid: null, ...overrides,
 })
+
+/** The verification's live region; the transfer panel has its own. */
+const verifyStatus = () => within(screen.getByRole('button', { name: 'Verificar cadena' }).parentElement!).getByRole('status')
 
 async function open() {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: [`/evidence/${code}`] })} />)
@@ -78,7 +82,7 @@ describe('EvidencePage', () => {
     expect(within(anomalies).getByText('Transferencia vencida')).toBeInTheDocument()
     expect(within(anomalies).getByText('Severidad media')).toBeInTheDocument()
     expect(within(anomalies).getByText(detail.anomalies[0].explanation)).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Transferencia pendiente' })).toHaveTextContent('De Diego Salas a Nuria Paredes, pedida por Lucía Ferrer')
+    expect(screen.getByRole('region', { name: 'Transferencia de custodia' })).toHaveTextContent('De Diego Salas a Nuria Paredes, pedida por Lucía Ferrer')
     expect(screen.getByText(detail.content.sha256)).toBeInTheDocument()
   })
 
@@ -99,7 +103,7 @@ describe('EvidencePage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Verificar cadena' }))
 
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Cadena íntegra: los 2 eventos y el contenido coinciden con lo firmado.'))
+    await waitFor(() => expect(verifyStatus()).toHaveTextContent('Cadena íntegra: los 2 eventos y el contenido coinciden con lo firmado.'))
     expect(screen.getAllByText('Íntegra').length).toBeGreaterThan(0)
   })
 
@@ -111,11 +115,11 @@ describe('EvidencePage', () => {
 
     await userEvent.click(button)
     expect(button).toHaveAttribute('aria-disabled', 'true')
-    expect(screen.getByRole('status')).toHaveTextContent('Verificando la cadena…')
+    expect(verifyStatus()).toHaveTextContent('Verificando la cadena…')
     await userEvent.click(button)
     release(json(200, report({ eventCount: 1, verifiedThroughSeq: 1 })))
 
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Cadena íntegra: el evento y el contenido coinciden con lo firmado.'))
+    await waitFor(() => expect(verifyStatus()).toHaveTextContent('Cadena íntegra: el evento y el contenido coinciden con lo firmado.'))
     expect(fetchMock.mock.calls.filter(([input]) => String(input).endsWith('/chain/verify'))).toHaveLength(1)
   })
 
@@ -156,7 +160,7 @@ describe('EvidencePage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Verificar cadena' }))
 
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Cadena alterada en el evento #3'))
+    await waitFor(() => expect(verifyStatus()).toHaveTextContent('Cadena alterada en el evento #3'))
     expect(screen.queryByRole('link', { name: 'evento #3' })).not.toBeInTheDocument()
     expect(screen.queryByText(/Primer evento inválido/)).not.toBeInTheDocument()
   })
@@ -173,7 +177,7 @@ describe('EvidencePage', () => {
     })
     await userEvent.click(screen.getByRole('button', { name: 'Verificar cadena' }))
 
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Sin conexión: no se pudo verificar.'))
+    await waitFor(() => expect(verifyStatus()).toHaveTextContent('Sin conexión: no se pudo verificar.'))
     expect(document.getElementById('event-2')).toHaveTextContent('Primer evento inválido')
     expect(screen.getAllByText('Alterada').length).toBeGreaterThan(0)
   })
