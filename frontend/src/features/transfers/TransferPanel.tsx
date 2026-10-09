@@ -7,7 +7,7 @@ import type { Person } from '../../api/people'
 import type { TransferResource } from '../../api/transfers'
 import type { SessionUser } from '../../auth/session'
 import { formatUtcDateTime } from '../../lib/format'
-import { useWaited } from '../../lib/useWaited'
+import { READY_SENTENCE, useWaited, waitSentence } from '../../lib/useWaited'
 import { clearIntent, getIntent, intentScope, startIntent, type IntentKind, type PendingIntent } from './pendingIntent'
 import { RejectDialog, RequestDialog, type RequestFields } from './TransferDialogs'
 import { PROBLEM, type WriteResult } from './transferActions'
@@ -144,7 +144,9 @@ export function TransferPanel({
       ? `Enviando ${deciding === 'reject' ? 'el rechazo' : 'la aceptación'}…`
       : sendingRequest
         ? 'Enviando la solicitud…'
-        : ''
+        : notice?.wait !== undefined && waited
+          ? READY_SENTENCE // politely, instead of changing the alert that asked for the wait
+          : ''
 
   return (
     <section className="transfers" aria-labelledby="transfers-title">
@@ -159,10 +161,7 @@ export function TransferPanel({
       {notice && (
         <div ref={noticeRef} tabIndex={-1} role={notice.kind === 'success' ? 'status' : 'alert'} className={`notice notice--${notice.kind}`}>
           <NoticeIcon kind={notice.kind} />
-          <p>
-            {notice.text}
-            {notice.wait !== undefined && (waited ? ' Ya puedes reintentar.' : ` Espera ${notice.wait} s antes de reintentar.`)}
-          </p>
+          <p>{notice.text}</p>
           {notice.retry && (
             <div className="notice__actions">
               {/* aria-disabled, not disabled, so focus can rest on it while the wait runs. */}
@@ -370,7 +369,7 @@ function failed(write: WriteResult['write']): string {
 
 /** A write turned away before it ran: nothing was saved, and the same key can go again once the wait is over. */
 function throttled({ write, retryAfterSeconds }: Extract<WriteResult, { outcome: 'throttled' }>): Notice {
-  const text = `${failed(write)}: el servidor recibió demasiadas operaciones seguidas y no guardó nada.`
+  const text = `${failed(write)}: el servidor recibió demasiadas operaciones seguidas y no guardó nada. ${waitSentence(retryAfterSeconds)}`
   return { kind: 'error', focus: true, text, retry: write === 'request' ? 'request' : 'decision', wait: retryAfterSeconds }
 }
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { isRouteErrorResponse, Link, useRevalidator, useRouteError } from 'react-router'
-import { ApiError } from '../api/client'
-import { useWaited } from '../lib/useWaited'
+import { ApiError, DEFAULT_RETRY_AFTER_SECONDS } from '../api/client'
+import { READY_SENTENCE, useWaited, waitSentence } from '../lib/useWaited'
 
 /** What a route calls a 404, e.g. a missing evidence; other routes say the page is not there. */
 interface NotFoundText {
@@ -30,24 +30,28 @@ export function RouteError({ notFound = PAGE_NOT_FOUND }: { notFound?: NotFoundT
   }, [retrying])
 
   return (
-    <section className="panel panel--message panel--error" role="alert" aria-labelledby="error-title">
-      <h1 id="error-title" className="panel__title" ref={headingRef} tabIndex={-1}>
-        {title}
-      </h1>
-      <p className="panel__hint">
-        {wait === undefined ? detail : `${detail} ${waited ? 'Ya puedes reintentar.' : `Espera ${wait} s antes de reintentar.`}`}
+    <>
+      <section className="panel panel--message panel--error" role="alert" aria-labelledby="error-title">
+        <h1 id="error-title" className="panel__title" ref={headingRef} tabIndex={-1}>
+          {title}
+        </h1>
+        <p className="panel__hint">{detail}</p>
+        {retry ? (
+          // aria-disabled, not disabled, so keyboard focus stays on the button while retrying or waiting.
+          <button type="button" className="button" aria-disabled={blocked} onClick={() => blocked || revalidator.revalidate()}>
+            {retrying ? 'Reintentando…' : 'Reintentar'}
+          </button>
+        ) : (
+          <Link to="/" className="button">
+            Ir a la bandeja
+          </Link>
+        )}
+      </section>
+      {/* Outside the alert, so the end of a wait is said politely instead of the whole alert again. */}
+      <p className="visually-hidden" role="status">
+        {wait !== undefined && waited ? READY_SENTENCE : ''}
       </p>
-      {retry ? (
-        // aria-disabled, not disabled, so keyboard focus stays on the button while retrying or waiting.
-        <button type="button" className="button" aria-disabled={blocked} onClick={() => blocked || revalidator.revalidate()}>
-          {retrying ? 'Reintentando…' : 'Reintentar'}
-        </button>
-      ) : (
-        <Link to="/" className="button">
-          Ir a la bandeja
-        </Link>
-      )}
-    </section>
+    </>
   )
 }
 
@@ -61,7 +65,8 @@ function describe(error: unknown, notFound: NotFoundText): { title: string; deta
     return { title: 'Sin permiso', detail: 'Tu rol no permite ver esto.', retry: false }
   }
   if (error instanceof ApiError && error.status === 429) {
-    return { title: 'Demasiadas solicitudes', detail: 'El servidor recibió demasiadas solicitudes seguidas.', retry: true, wait: error.retryAfterSeconds }
+    const wait = error.retryAfterSeconds ?? DEFAULT_RETRY_AFTER_SECONDS
+    return { title: 'Demasiadas solicitudes', detail: `El servidor recibió demasiadas solicitudes seguidas. ${waitSentence(wait)}`, retry: true, wait }
   }
   if (error instanceof ApiError) {
     return { title: 'No se pudo cargar la información', detail: `El servidor respondió con el código ${error.status}.`, retry: true }

@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { useWaited } from './useWaited'
+import { useWaited, waitSentence } from './useWaited'
 
 afterEach(() => vi.useRealTimers())
 
@@ -26,5 +26,20 @@ describe('useWaited', () => {
 
     rerender({ seconds: undefined, answer: undefined })
     expect(result.current).toBe(true)
+  })
+
+  it('leaves no timer behind when the page goes during a wait', () => {
+    vi.useFakeTimers()
+    const { unmount } = renderHook(() => useWaited(30, {}))
+    expect(vi.getTimerCount()).toBe(1)
+
+    unmount()
+
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('says the wait in whole words, one second or several', () => {
+    expect(waitSentence(1)).toBe('Espera 1 segundo antes de volver a intentarlo.')
+    expect(waitSentence(30)).toBe('Espera 30 segundos antes de volver a intentarlo.')
   })
 })

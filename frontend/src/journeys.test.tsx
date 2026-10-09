@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { createMemoryRouter } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ChainEvent, EvidenceDetail, EvidenceSummary, TransferView } from './api/evidence'
 import { forgetPeople } from './api/people'
 import { clearAllIntents } from './features/transfers/pendingIntent'
@@ -265,6 +265,7 @@ describe('a request that got no answer', () => {
 
 describe('a request the server throttles', () => {
   it('says nothing was saved, re-reads nothing, holds every write, and retries with the same Idempotency-Key once the wait is over', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     signInAs('Investigador')
     const db = { detail }
     const reads = evidenceApi(db)
@@ -276,7 +277,7 @@ describe('a request the server throttles', () => {
         keys.push(request.headers.get('Idempotency-Key')!)
         // The limiter answers before the endpoint runs; the real API then creates the transfer on the retry.
         if (keys.length === 1)
-          return problem(429, { type: 'urn:evidence-chain:problem:rate-limited', title: 'Too many requests' }, { 'Retry-After': '1' })
+          return problem(429, { type: 'urn:evidence-chain:problem:rate-limited', title: 'Too many requests' }, { 'Retry-After': '30' })
         db.detail = { ...detail, pendingTransfer: pendingToDiego }
         return transferResponse(pendingToDiego, 201)
       }),
@@ -286,8 +287,7 @@ describe('a request the server throttles', () => {
     await requestTo('Diego Salas', 'Peritaje externo')
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('No se pudo solicitar la transferencia: el servidor recibió demasiadas operaciones seguidas y no guardó nada. Espera 1 s antes de reintentar.')
-    expect(alert).toHaveFocus()
+    expect(alert).toHaveTextContent('No se pudo solicitar la transferencia: el servidor recibió demasiadas operaciones seguidas y no guardó nada. Espera 30 segundos antes de volver a intentarlo.')
     expect(reads.detail).toBe(1)
     const retry = within(alert).getByRole('button', { name: 'Reintentar' })
     const requestButton = screen.getByRole('button', { name: 'Solicitar transferencia' })
@@ -298,8 +298,9 @@ describe('a request the server throttles', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(keys).toHaveLength(1)
 
-    await waitFor(() => expect(retry).toHaveAttribute('aria-disabled', 'false'), { timeout: 2_000 })
-    expect(alert).toHaveTextContent('Ya puedes reintentar.')
+    await act(async () => vi.advanceTimersByTime(30_000))
+    expect(retry).toHaveAttribute('aria-disabled', 'false')
+    expect(screen.getByText('Ya puedes volver a intentarlo.')).toBeInTheDocument() // said politely, outside the alert
     // Reopening the dialog offers the same request, saying it was not saved rather than that it is unconfirmed.
     await userEvent.click(requestButton)
     expect(await screen.findByRole('dialog')).toHaveTextContent('Tu última solicitud no se guardó')

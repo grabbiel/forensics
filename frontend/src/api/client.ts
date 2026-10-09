@@ -27,7 +27,7 @@ export class ApiError extends Error {
 }
 
 /** The wait assumed when a 429 has no readable Retry-After: cross-origin, the browser hides it unless the API exposes it. */
-const DEFAULT_RETRY_AFTER_SECONDS = 5
+export const DEFAULT_RETRY_AFTER_SECONDS = 5
 
 /** The longest wait the app honours, so a wrong header never locks a button for long. */
 const MAX_RETRY_AFTER_SECONDS = 120

@@ -113,11 +113,12 @@ describe('routes and sign-in', () => {
     expect(getSession()).toBeNull()
   })
 
-  it('asks to wait after too many sign-ins, and holds the personas until the wait is over', async () => {
+  it('asks to wait after too many sign-ins, and holds every way to sign in until the wait is over', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     let throttled = true
     const fetchMock = fakeApi((url) =>
       url === '/api/v1/auth/token' && throttled
-        ? new Response(JSON.stringify({ status: 429 }), { status: 429, headers: { 'Content-Type': 'application/problem+json', 'Retry-After': '1' } })
+        ? new Response(JSON.stringify({ status: 429 }), { status: 429, headers: { 'Content-Type': 'application/problem+json', 'Retry-After': '30' } })
         : undefined,
     )
     const signIns = () => fetchMock.mock.calls.filter(([url]) => String(url) === '/api/v1/auth/token').length
@@ -127,14 +128,17 @@ describe('routes and sign-in', () => {
     await userEvent.click(persona)
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('Demasiados intentos de inicio de sesión seguidos. Espera 1 s y vuelve a intentarlo.')
+    expect(alert).toHaveTextContent('Demasiados intentos de inicio de sesión seguidos. Espera 30 segundos antes de volver a intentarlo.')
     expect(persona).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('button', { name: 'Entrar' })).toHaveAttribute('aria-disabled', 'true')
     await userEvent.click(persona)
+    await userEvent.type(screen.getByLabelText('Otra persona del equipo'), 'nuria.paredes{Enter}')
     expect(signIns()).toBe(1)
 
     throttled = false
-    await waitFor(() => expect(persona).toHaveAttribute('aria-disabled', 'false'), { timeout: 2_000 })
-    expect(alert).toHaveTextContent('Ya puedes volver a intentarlo.')
+    await act(async () => vi.advanceTimersByTime(30_000))
+    expect(persona).toHaveAttribute('aria-disabled', 'false')
+    expect(screen.getByText('Ya puedes volver a intentarlo.')).toBeInTheDocument() // said politely, outside the alert
     await userEvent.click(persona)
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/'))

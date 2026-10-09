@@ -663,7 +663,7 @@ svg {
   border-color: var(--line);
   background: var(--surface);
   opacity: 0.55;
-  cursor: not-allowed;
+  cursor: progress;
 }
 
 .persona > svg:first-child {

@@ -3,7 +3,7 @@ import type { Icon } from '@phosphor-icons/react'
 import type { FormEvent } from 'react'
 import { Form, useActionData, useNavigation, useSearchParams } from 'react-router'
 import type { Role } from '../../auth/session'
-import { useWaited } from '../../lib/useWaited'
+import { READY_SENTENCE, useWaited } from '../../lib/useWaited'
 import type { loginAction } from './loginRoute'
 
 /** The demo personas; every seeded user can sign in, these three cover the roles. */
@@ -46,10 +46,12 @@ export function LoginPage() {
         {result?.error && (
           <p className="notice notice--error" role="alert">
             {result.error}
-            {result.retryAfterSeconds !== undefined &&
-              (waited ? ' Ya puedes volver a intentarlo.' : ` Espera ${result.retryAfterSeconds} s y vuelve a intentarlo.`)}
           </p>
         )}
+        {/* Outside the alert, so the end of a wait is said politely instead of the alert again. */}
+        <p className="visually-hidden" role="status">
+          {result?.retryAfterSeconds !== undefined && waited ? READY_SENTENCE : ''}
+        </p>
 
         <ul className="personas">
           {DEMO_USERS.map(({ userName, displayName, role, can, icon: PersonaIcon }) => (

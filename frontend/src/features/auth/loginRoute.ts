@@ -1,9 +1,10 @@
 import { data, redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from 'react-router'
 import { signIn } from '../../api/auth'
-import { ApiError } from '../../api/client'
+import { ApiError, DEFAULT_RETRY_AFTER_SECONDS } from '../../api/client'
 import { forgetPeople } from '../../api/people'
 import { safeRedirect } from '../../auth/guard'
 import { clearSession, getSession, saveSession } from '../../auth/session'
+import { waitSentence } from '../../lib/useWaited'
 import { clearAllIntents } from '../transfers/pendingIntent'
 
 /** Already signed in: go where the user was headed. */
@@ -28,8 +29,10 @@ export async function loginAction({ request }: ActionFunctionArgs) {
     saveSession(await signIn(userName, request.signal))
   } catch (error) {
     if (error instanceof ApiError && error.status === 400) return data<LoginFailure>({ error: `No hay ningún usuario «${userName}».` }, { status: 400 })
-    if (error instanceof ApiError && error.status === 429)
-      return data<LoginFailure>({ error: 'Demasiados intentos de inicio de sesión seguidos.', retryAfterSeconds: error.retryAfterSeconds }, { status: 429 })
+    if (error instanceof ApiError && error.status === 429) {
+      const wait = error.retryAfterSeconds ?? DEFAULT_RETRY_AFTER_SECONDS
+      return data<LoginFailure>({ error: `Demasiados intentos de inicio de sesión seguidos. ${waitSentence(wait)}`, retryAfterSeconds: wait }, { status: 429 })
+    }
     if (error instanceof ApiError) return data<LoginFailure>({ error: 'El servidor no pudo iniciar la sesión. Inténtalo de nuevo.' }, { status: 502 })
     return data<LoginFailure>({ error: 'Sin conexión con el servidor. Comprueba tu red e inténtalo de nuevo.' }, { status: 503 })
   }

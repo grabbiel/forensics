@@ -1,5 +1,5 @@
 import { data, type ActionFunctionArgs } from 'react-router'
-import { ApiError, withTimeout, type ProblemDetails } from '../../api/client'
+import { ApiError, DEFAULT_RETRY_AFTER_SECONDS, withTimeout, type ProblemDetails } from '../../api/client'
 import { decideTransfer, requestTransfer, type Decision, type TransferResource } from '../../api/transfers'
 import { signedIn } from '../../auth/guard'
 import { clearIntent, intentScope } from './pendingIntent'
@@ -27,7 +27,7 @@ type WriteKind = 'request' | Decision
 export type WriteResult =
   | { outcome: 'done'; write: WriteKind; transfer: TransferResource; replayed: boolean }
   | { outcome: 'refused'; write: WriteKind; status: number; problem?: ProblemDetails }
-  | { outcome: 'throttled'; write: WriteKind; retryAfterSeconds?: number }
+  | { outcome: 'throttled'; write: WriteKind; retryAfterSeconds: number }
   | { outcome: 'unknown'; write: WriteKind; status: number; problem?: ProblemDetails }
 
 /** POST /evidence/:id/transfer: form fields toCustodianId, reason, idempotencyKey. */
@@ -79,7 +79,7 @@ async function write(
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) throw error // signedIn sends the user to sign in again
       if (error instanceof ApiError && error.status === 429)
-        return data<WriteResult>({ outcome: 'throttled', write: kind, retryAfterSeconds: error.retryAfterSeconds }, { status: 429 })
+        return data<WriteResult>({ outcome: 'throttled', write: kind, retryAfterSeconds: error.retryAfterSeconds ?? DEFAULT_RETRY_AFTER_SECONDS }, { status: 429 })
       if (error instanceof ApiError && !outcomeUnknown(error)) {
         // Nothing was saved and the same key may be sent again.
         if (error.problem?.type !== PROBLEM.concurrentWrite) settled()

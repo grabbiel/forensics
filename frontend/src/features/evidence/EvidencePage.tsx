@@ -1,11 +1,12 @@
 import { ArrowLeft, ArrowsLeftRight, CheckCircle, ShieldCheck, Warning, WarningOctagon } from '@phosphor-icons/react'
 import { Fragment, useRef, useState, type MouseEvent } from 'react'
 import { Link, useFetcher, useLoaderData } from 'react-router'
+import { DEFAULT_RETRY_AFTER_SECONDS } from '../../api/client'
 import type { Anomaly, ChainEvent, EvidenceDetail, VerificationReport } from '../../api/evidence'
 import { IntegrityBadge } from '../../components/IntegrityBadge'
 import { TypeBadge } from '../../components/TypeBadge'
 import { ANOMALY_LABELS, describeEvent, formatBytes, formatUtcDateTime, SEVERITY_LABELS } from '../../lib/format'
-import { useWaited } from '../../lib/useWaited'
+import { READY_SENTENCE, useWaited, waitSentence } from '../../lib/useWaited'
 import { TransferPanel } from '../transfers/TransferPanel'
 import type { evidenceLoader, VerifyResult } from './evidenceLoader'
 
@@ -76,7 +77,7 @@ function VerifyOutcome({ result, verifying, waited, events }: { result: VerifyRe
           {result.status === 0
             ? 'Sin conexión: no se pudo verificar. Inténtalo de nuevo.'
             : result.status === 429
-              ? `Demasiadas verificaciones seguidas. ${waited ? 'Ya puedes volver a verificar.' : `Espera ${result.retryAfterSeconds} s antes de volver a verificar.`}`
+              ? `Demasiadas verificaciones seguidas. ${waited ? READY_SENTENCE : waitSentence(result.retryAfterSeconds ?? DEFAULT_RETRY_AFTER_SECONDS)}`
               : `No se pudo verificar (código ${result.status}).`}
         </span>
       ) : result.report.valid ? (

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
@@ -143,10 +143,11 @@ describe('InboxPage', () => {
   })
 
   it('asks to wait after a 429, and offers the retry only once the wait is over', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     const throttled = async () =>
       new Response(JSON.stringify({ status: 429, type: 'urn:evidence-chain:problem:rate-limited' }), {
         status: 429,
-        headers: { 'Content-Type': 'application/problem+json', 'Retry-After': '1' },
+        headers: { 'Content-Type': 'application/problem+json', 'Retry-After': '30' },
       })
     const fetchMock = vi.fn<typeof fetch>(withPeople(throttled))
     vi.stubGlobal('fetch', fetchMock)
@@ -154,7 +155,7 @@ describe('InboxPage', () => {
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('Demasiadas solicitudes')
-    expect(alert).toHaveTextContent('Espera 1 s antes de reintentar.')
+    expect(alert).toHaveTextContent('El servidor recibió demasiadas solicitudes seguidas. Espera 30 segundos antes de volver a intentarlo.')
     const retry = within(alert).getByRole('button', { name: 'Reintentar' })
     expect(retry).toHaveAttribute('aria-disabled', 'true')
     await userEvent.click(retry)
@@ -163,8 +164,9 @@ describe('InboxPage', () => {
     expect(screen.getByRole('searchbox')).toHaveValue('firewall')
 
     fetchMock.mockImplementation(withPeople(async () => reply(200, page(rows))))
-    await waitFor(() => expect(retry).toHaveAttribute('aria-disabled', 'false'), { timeout: 2_000 })
-    expect(alert).toHaveTextContent('Ya puedes reintentar.')
+    await act(async () => vi.advanceTimersByTime(30_000))
+    expect(retry).toHaveAttribute('aria-disabled', 'false')
+    expect(screen.getByText('Ya puedes volver a intentarlo.')).toBeInTheDocument() // said politely, outside the alert
     await userEvent.click(retry)
 
     expect(await screen.findByRole('table')).toBeInTheDocument()

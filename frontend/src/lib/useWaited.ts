@@ -13,3 +13,11 @@ export function useWaited(seconds: number | undefined, answer: unknown): boolean
   }, [seconds, answer])
   return seconds === undefined || over === answer
 }
+
+/** What every throttled answer asks of the user, in words a screen reader says well. */
+export function waitSentence(seconds: number): string {
+  return `Espera ${seconds} ${seconds === 1 ? 'segundo' : 'segundos'} antes de volver a intentarlo.`
+}
+
+/** Said politely once the wait is over; the alert that asked for it stays as it was. */
+export const READY_SENTENCE = 'Ya puedes volver a intentarlo.'

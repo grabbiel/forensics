@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
@@ -183,10 +183,11 @@ describe('EvidencePage', () => {
   })
 
   it('asks to wait after too many verifications, holding the button until the wait is over', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     let throttled = true
     const fetchMock = stubApi(async () =>
       throttled
-        ? new Response(JSON.stringify({ status: 429 }), { status: 429, headers: { 'Content-Type': 'application/problem+json', 'Retry-After': '1' } })
+        ? new Response(JSON.stringify({ status: 429 }), { status: 429, headers: { 'Content-Type': 'application/problem+json', 'Retry-After': '30' } })
         : json(200, report({})),
     )
     const verifications = () => fetchMock.mock.calls.filter(([input]) => String(input).endsWith('/chain/verify')).length
@@ -195,14 +196,15 @@ describe('EvidencePage', () => {
 
     await userEvent.click(button)
 
-    await waitFor(() => expect(verifyStatus()).toHaveTextContent('Demasiadas verificaciones seguidas. Espera 1 s antes de volver a verificar.'))
+    await waitFor(() => expect(verifyStatus()).toHaveTextContent('Demasiadas verificaciones seguidas. Espera 30 segundos antes de volver a intentarlo.'))
     expect(button).toHaveAttribute('aria-disabled', 'true')
     await userEvent.click(button)
     expect(verifications()).toBe(1)
 
     throttled = false
-    await waitFor(() => expect(button).toHaveAttribute('aria-disabled', 'false'), { timeout: 2_000 })
-    expect(verifyStatus()).toHaveTextContent('Demasiadas verificaciones seguidas. Ya puedes volver a verificar.')
+    await act(async () => vi.advanceTimersByTime(30_000))
+    expect(button).toHaveAttribute('aria-disabled', 'false')
+    expect(verifyStatus()).toHaveTextContent('Demasiadas verificaciones seguidas. Ya puedes volver a intentarlo.')
     await userEvent.click(button)
 
     await waitFor(() => expect(verifyStatus()).toHaveTextContent('Cadena íntegra'))
