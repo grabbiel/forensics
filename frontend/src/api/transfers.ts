@@ -17,7 +17,7 @@ export interface TransferResource {
   etag: string
 }
 
-export interface TransferRequest {
+interface TransferRequest {
   evidenceCode: string
   toCustodianId: number
   reason: string

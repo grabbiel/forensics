@@ -2,7 +2,6 @@ using System.Diagnostics;
 using Azure.Monitor.OpenTelemetry.AspNetCore;
 using EvidenceChain.Application.Telemetry;
 using OpenTelemetry.Instrumentation.AspNetCore;
-using OpenTelemetry.Metrics;
 
 namespace EvidenceChain.Api.Telemetry;
 

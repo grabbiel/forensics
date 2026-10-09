@@ -2,7 +2,8 @@
 # Prepares the Azure SQL database after `azd provision`, as the signed-in SQL Entra admin: migrate, create the API's
 # managed-identity user (custody writes by column; custody events never change), allow SNAPSHOT reads, set
 # compatibility 170. Load the data afterwards with the seeder (infra/README.md, step 5).
-# Opens a firewall rule for this machine's public IP and always removes it on exit.
+# Opens a firewall rule for this machine's public IP and always removes it on exit. On an existing deployment, a
+# migration that removes what the running API still reads runs after `azd deploy api` (infra/README.md, "Upgrading").
 # Usage: infra/scripts/prepare-database.sh [--ip <address>]
 set -euo pipefail
 

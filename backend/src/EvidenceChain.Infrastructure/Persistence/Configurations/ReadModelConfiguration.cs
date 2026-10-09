@@ -17,7 +17,6 @@ internal sealed class EvidenceInboxConfiguration : IEntityTypeConfiguration<Evid
         builder.Property(r => r.EvidenceId).ValueGeneratedNever();
         builder.Property(r => r.Code).HasMaxLength(15).IsUnicode(false).UseCollation(EvidenceConfiguration.BinaryCollation);
         builder.Property(r => r.TypeCode).HasColumnType("char(3)").IsUnicode(false).UseCollation(EvidenceConfiguration.BinaryCollation);
-        builder.Property(r => r.CodeDateUtc).HasColumnType("date");
         builder.Property(r => r.Description).HasMaxLength(500);
         builder.Property(r => r.CurrentCustodianName).HasMaxLength(100);
         builder.Property(r => r.IntegrityStatus).HasConversion<string>().HasMaxLength(16).IsUnicode(false);

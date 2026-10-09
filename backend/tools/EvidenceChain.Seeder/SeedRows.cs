@@ -50,8 +50,8 @@ internal sealed class SeedRows
             ("ActorId", typeof(int)), ("TransferId", typeof(long)), ("FromCustodianId", typeof(int)), ("ToCustodianId", typeof(int)), ("Notes", typeof(string)),
             ("ContentSha256", typeof(byte[])), ("ContentLength", typeof(int)), ("MediaType", typeof(string)), ("KeyId", typeof(string)), ("PrevMac", typeof(byte[])),
             ("Mac", typeof(byte[])), ("CanonicalVersion", typeof(byte)));
-        var inbox = Table(("EvidenceId", typeof(long)), ("Code", typeof(string)), ("TypeCode", typeof(string)), ("CodeDateUtc", typeof(DateTime)), ("Description", typeof(string)),
-            ("RegisteredAtUtc", typeof(DateTime)), ("CurrentCustodianId", typeof(int)), ("CurrentCustodianName", typeof(string)), ("EventCount", typeof(int)),
+        var inbox = Table(("EvidenceId", typeof(long)), ("Code", typeof(string)), ("TypeCode", typeof(string)), ("Description", typeof(string)),
+            ("CurrentCustodianId", typeof(int)), ("CurrentCustodianName", typeof(string)), ("EventCount", typeof(int)),
             ("LastEventAtUtc", typeof(DateTime)), ("IntegrityStatus", typeof(string)), ("PendingTransferId", typeof(long)), ("PendingToCustodianId", typeof(int)),
             ("PendingSinceUtc", typeof(DateTime)));
 
@@ -88,7 +88,7 @@ internal sealed class SeedRows
             content.Rows.Add(id, e.Sha256, e.Content.Length, e.MediaType, e.Content);
 
             var open = pending.GetValueOrDefault(e.Code);
-            inbox.Rows.Add(id, e.Code, e.TypeCode, e.CodeDateUtc.ToDateTime(TimeOnly.MinValue), e.Description, e.RegisteredAtUtc, userIds[e.CurrentCustodian],
+            inbox.Rows.Add(id, e.Code, e.TypeCode, e.Description, userIds[e.CurrentCustodian],
                 names[e.CurrentCustodian], e.EventCount, chains[e.Code][^1].OccurredAtUtc, nameof(IntegrityStatus.Unverified),
                 Db(open is null ? null : (long?)open.Number), Db(open is null ? null : (int?)userIds[open.ToCustodian]), Db(open?.RequestedAtUtc));
         }

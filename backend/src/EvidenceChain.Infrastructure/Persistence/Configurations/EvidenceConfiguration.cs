@@ -61,11 +61,6 @@ internal sealed class EvidenceConfiguration : IEntityTypeConfiguration<Evidence>
 
         builder.HasIndex(e => e.Code).IsUnique().HasDatabaseName("UX_Evidence_Code");
         builder.HasIndex(e => new { e.TypeCode, e.CodeDateUtc, e.DailyNo }).IsUnique().HasDatabaseName("UX_Evidence_TypeDateNo");
-
-        // Tracer ordering; the inbox moves to the EvidenceInbox projection with the API work.
-        builder.HasIndex(e => new { e.CodeDateUtc, e.EvidenceId })
-            .IsDescending(true, true)
-            .HasDatabaseName("IX_Evidence_Recent");
     }
 }
 

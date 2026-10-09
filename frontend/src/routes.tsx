@@ -18,7 +18,7 @@ const EVIDENCE_NOT_FOUND = { title: 'Evidencia no encontrada', detail: 'No exist
  * something about its current state (a 409 or 400 that it moved on, an unknown outcome that it may have), so the page
  * reads itself again after every write.
  */
-export function revalidateEvidence({ actionStatus, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
+function revalidateEvidence({ actionStatus, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
   return actionStatus !== undefined || defaultShouldRevalidate
 }
 

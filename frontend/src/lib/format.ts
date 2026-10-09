@@ -1,6 +1,5 @@
 import type { Anomaly, ChainEvent, EvidenceFilter, IntegrityStatus } from '../api/evidence'
 
-const dateFormat = new Intl.DateTimeFormat('es', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })
 const dateTimeFormat = new Intl.DateTimeFormat('es', {
   day: '2-digit',
   month: 'short',
@@ -10,11 +9,6 @@ const dateTimeFormat = new Intl.DateTimeFormat('es', {
   hourCycle: 'h23',
   timeZone: 'UTC',
 })
-
-/** Formats a UTC instant's date for display, e.g. "07 oct 2026". */
-export function formatUtcDate(iso: string): string {
-  return dateFormat.format(new Date(iso.length === 10 ? `${iso}T00:00:00Z` : iso))
-}
 
 /** Formats a UTC instant, e.g. "07 oct 2026, 14:03 UTC"; custody times are always shown in UTC. */
 export function formatUtcDateTime(iso: string): string {

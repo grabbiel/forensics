@@ -17,7 +17,7 @@ function pageOf(request: Request, page?: string): string {
 }
 
 /** The session, or a redirect to /login when there is none. */
-export function requireSession(request: Request, page?: string): Session {
+function requireSession(request: Request, page?: string): Session {
   const session = getSession()
   if (!session) throw redirect(loginPath(safeRedirect(pageOf(request, page))))
   return session
