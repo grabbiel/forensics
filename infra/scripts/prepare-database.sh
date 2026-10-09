@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
-# Prepares the Azure SQL database after `azd provision` (roadmap §1.3), as the signed-in SQL Entra admin:
-# migrate, create the API's managed-identity user (custody writes by column; custody events never change),
-# allow SNAPSHOT reads, set compatibility 170, insert tracer rows.
+# Prepares the Azure SQL database after `azd provision`, as the signed-in SQL Entra admin: migrate, create the API's
+# managed-identity user (custody writes by column; custody events never change), allow SNAPSHOT reads, set
+# compatibility 170. Load the data afterwards with the seeder (infra/README.md, step 5).
 # Opens a firewall rule for this machine's public IP and always removes it on exit.
-# Usage: infra/scripts/prepare-database.sh [--skip-tracer] [--ip <address>]
+# Usage: infra/scripts/prepare-database.sh [--ip <address>]
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-skip_tracer=false
 ip=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --skip-tracer) skip_tracer=true; shift ;;
     --ip) ip="$2"; shift 2 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
@@ -46,12 +44,12 @@ trap 'echo "Removing firewall rule $rule"; az sql server firewall-rule delete -g
 # Your az/azd sign-in, through DefaultAzureCredential.
 connection="Server=tcp:${sql_fqdn},1433;Database=${database};Authentication=Active Directory Default;Encrypt=True;"
 
-echo "1/3 Applying migrations"
+echo "1/2 Applying migrations"
 (cd "$repo_root/backend" && dotnet tool restore >/dev/null && dotnet ef database update \
   --project src/EvidenceChain.Infrastructure --startup-project src/EvidenceChain.Api --connection "$connection")
 
 # FROM EXTERNAL PROVIDER needs an admin who can read the directory (a guest admin needs a directory role).
-echo "2/3 Granting the API's managed identity its access"
+echo "2/2 Granting the API's managed identity its access"
 sqlcmd -S "tcp:${sql_fqdn},1433" -d "$database" --authentication-method ActiveDirectoryDefault -b -Q "
 IF DATABASE_PRINCIPAL_ID(N'${api_name}') IS NULL
     CREATE USER [${api_name}] FROM EXTERNAL PROVIDER WITH OBJECT_ID = '${api_principal_id}';
@@ -70,10 +68,3 @@ DENY UPDATE, DELETE ON dbo.CustodyEvents TO [${api_name}];
 IF (SELECT snapshot_isolation_state FROM sys.databases WHERE name = DB_NAME()) = 0
     ALTER DATABASE CURRENT SET ALLOW_SNAPSHOT_ISOLATION ON;
 ALTER DATABASE CURRENT SET COMPATIBILITY_LEVEL = 170;"
-
-if [[ "$skip_tracer" == false ]]; then
-  echo "3/3 Inserting tracer rows (skipped when evidence exists)"
-  dotnet run --project "$repo_root/backend/tools/EvidenceChain.Seeder" -- tracer --connection "$connection"
-else
-  echo "3/3 Tracer rows skipped"
-fi
