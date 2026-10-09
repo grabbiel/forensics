@@ -52,6 +52,7 @@ function stubApi(verify: () => Promise<Response>, events = chain.events) {
     if (url === `/api/v1/evidence/${code}`) return json(200, detail)
     if (url === `/api/v1/evidence/${code}/chain`) return json(200, { code, events })
     if (url === `/api/v1/evidence/${code}/chain/verify`) return verify()
+    if (url.startsWith('/api/v1/people')) return json(200, [])
     return json(404, { status: 404 }, 'application/problem+json')
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -78,7 +79,7 @@ describe('EvidencePage', () => {
     expect(within(anomalies).getByText('Transferencia vencida')).toBeInTheDocument()
     expect(within(anomalies).getByText('Severidad media')).toBeInTheDocument()
     expect(within(anomalies).getByText(detail.anomalies[0].explanation)).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Transferencia pendiente' })).toHaveTextContent('De Diego Salas a Nuria Paredes, pedida por Lucía Ferrer')
+    expect(screen.getByRole('region', { name: 'Transferencia de custodia' })).toHaveTextContent('De Diego Salas a Nuria Paredes, pedida por Lucía Ferrer')
     expect(screen.getByText(detail.content.sha256)).toBeInTheDocument()
   })
 

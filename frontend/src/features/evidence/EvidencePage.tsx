@@ -1,15 +1,17 @@
-import { ArrowLeft, ArrowsLeftRight, CheckCircle, Hourglass, ShieldCheck, Warning, WarningOctagon } from '@phosphor-icons/react'
-import { Fragment, useState, type MouseEvent } from 'react'
+import { ArrowLeft, ArrowsLeftRight, CheckCircle, ShieldCheck, Warning, WarningOctagon } from '@phosphor-icons/react'
+import { Fragment, useRef, useState, type MouseEvent } from 'react'
 import { Link, useFetcher, useLoaderData } from 'react-router'
-import type { Anomaly, ChainEvent, EvidenceDetail, TransferView, VerificationReport } from '../../api/evidence'
+import type { Anomaly, ChainEvent, EvidenceDetail, VerificationReport } from '../../api/evidence'
 import { IntegrityBadge } from '../../components/IntegrityBadge'
 import { TypeBadge } from '../../components/TypeBadge'
 import { ANOMALY_LABELS, describeEvent, formatBytes, formatUtcDateTime, SEVERITY_LABELS } from '../../lib/format'
+import { TransferPanel } from '../transfers/TransferPanel'
 import type { evidenceLoader, VerifyResult } from './evidenceLoader'
 
 /** One evidence: what it is, who holds it, what is wrong with it, and its custody chain, verifiable on demand. */
 export function EvidencePage() {
-  const { detail, chain } = useLoaderData<typeof evidenceLoader>()
+  const { detail, chain, custodians, user } = useLoaderData<typeof evidenceLoader>()
+  const headingRef = useRef<HTMLHeadingElement>(null)
   const verify = useFetcher<VerifyResult>()
   const verifying = verify.state !== 'idle'
   // The last report survives a later attempt that fails to reach the API; the code check drops another evidence's.
@@ -26,7 +28,7 @@ export function EvidencePage() {
           <ArrowLeft size={16} aria-hidden="true" />
           Bandeja
         </Link>
-        <h1 id="evidence-title" className="panel__title evidence__code" tabIndex={-1}>
+        <h1 id="evidence-title" className="panel__title evidence__code" tabIndex={-1} ref={headingRef}>
           {detail.code}
         </h1>
         <TypeBadge type={detail.typeCode} />
@@ -50,7 +52,7 @@ export function EvidencePage() {
 
       {detail.anomalies.length > 0 && <Anomalies anomalies={detail.anomalies} />}
       <Facts detail={detail} />
-      {detail.pendingTransfer && <PendingTransfer transfer={detail.pendingTransfer} />}
+      <TransferPanel detail={detail} chain={chain.events} custodians={custodians} user={user} headingRef={headingRef} />
       <Timeline events={chain.events} report={report} />
     </article>
   )
@@ -174,25 +176,6 @@ function Facts({ detail }: { detail: EvidenceDetail }) {
         </dd>
       </div>
     </dl>
-  )
-}
-
-/** The transfer waiting on its recipient. */
-function PendingTransfer({ transfer }: { transfer: TransferView }) {
-  return (
-    <section className="pending" aria-labelledby="pending-title">
-      <Hourglass size={20} aria-hidden="true" />
-      <div>
-        <h2 id="pending-title" className="section-title">
-          Transferencia pendiente
-        </h2>
-        <p>
-          De {transfer.from.displayName} a <strong>{transfer.to.displayName}</strong>, pedida por {transfer.requestedBy.displayName} el{' '}
-          {formatUtcDateTime(transfer.requestedAtUtc)}.
-        </p>
-        <p className="pending__reason">Motivo: {transfer.reason}</p>
-      </div>
-    </section>
   )
 }
 

@@ -1,14 +1,19 @@
 import type { LoaderFunctionArgs } from 'react-router'
 import { getChain, getEvidence, verifyChain, type VerificationReport } from '../../api/evidence'
 import { ApiError, type ProblemDetails } from '../../api/client'
+import { listPeople } from '../../api/people'
 import { signedIn } from '../../auth/guard'
 
-/** Detail and timeline together; a newer navigation aborts both. */
+/** Detail, timeline and the custodians a transfer can go to, together; a newer navigation aborts them all. */
 export function evidenceLoader({ request, params }: LoaderFunctionArgs) {
   const code = params.id!
   return signedIn(request, async (session) => {
-    const [detail, chain] = await Promise.all([getEvidence(code, request.signal), getChain(code, request.signal)])
-    return { detail, chain, user: session.user }
+    const [detail, chain, custodians] = await Promise.all([
+      getEvidence(code, request.signal),
+      getChain(code, request.signal),
+      listPeople('Custodio', request.signal),
+    ])
+    return { detail, chain, custodians, user: session.user }
   })
 }
 
