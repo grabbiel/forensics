@@ -103,6 +103,9 @@ public sealed class InvalidTransitionException(TransferCommand command, CustodyT
         transfer is null ? $"Cannot {command.ToString().ToLowerInvariant()}: the evidence already has a pending transfer."
         : $"Cannot {command.ToString().ToLowerInvariant()} transfer {transfer.TransferId}: it is {transfer.Status}.")
 {
+    /// <summary>The transfer acted on, or the one already pending when a request is refused.</summary>
+    public CustodyTransfer? Transfer { get; } = transfer;
+
     public TransferStatus? CurrentStatus { get; } = transfer?.Status;
 
     public int? ActedById { get; } = transfer?.DecidedById;

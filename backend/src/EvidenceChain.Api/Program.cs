@@ -1,5 +1,7 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using EvidenceChain.Api.OpenApi;
+using EvidenceChain.Api.Problems;
 using EvidenceChain.Api.Security;
 using EvidenceChain.Application.Anomalies;
 using EvidenceChain.Domain.Anomalies;
@@ -15,10 +17,10 @@ var connectionString = builder.Configuration.GetConnectionString("Default");
 if (string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException("ConnectionStrings:Default is not configured.");
 
-// Numbers are numbers: no quoted integers in requests, and integer-only types in the OpenAPI schema.
-builder.Services.AddControllers().AddJsonOptions(o => o.JsonSerializerOptions.NumberHandling = JsonNumberHandling.Strict);
-builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.NumberHandling = JsonNumberHandling.Strict);
-builder.Services.AddProblemDetails();
+// Numbers are numbers (no quoted integers, integer-only OpenAPI types) and enums travel as their names.
+builder.Services.AddControllers().AddJsonOptions(o => ConfigureJson(o.JsonSerializerOptions));
+builder.Services.ConfigureHttpJsonOptions(o => ConfigureJson(o.SerializerOptions));
+builder.Services.AddEvidenceChainProblems();
 // A lambda, not a method group: the XML-comment source generator only intercepts lambdas.
 builder.Services.AddOpenApi(options => OpenApiDocumentSetup.Configure(options));
 builder.Services.AddHealthChecks(); // liveness only: must never touch SQL (keeps serverless/auto-pause idle)
@@ -53,6 +55,12 @@ app.MapHealthChecks("/api/v1/health/live");
 app.MapControllers();
 
 app.Run();
+
+static void ConfigureJson(JsonSerializerOptions options)
+{
+    options.NumberHandling = JsonNumberHandling.Strict;
+    options.Converters.Add(new JsonStringEnumConverter());
+}
 
 // API responses are never cached by browsers, CDNs or rewrite proxies.
 static Task NoStoreForApi(HttpContext context, RequestDelegate next)
