@@ -20,6 +20,10 @@ public sealed class RequireIfMatchAttribute : Attribute
     public const string Header = "If-Match";
 }
 
+/// <summary>The 2xx answer carries the resource's ETag header, to send back as If-Match; declared in the contract.</summary>
+[AttributeUsage(AttributeTargets.Method)]
+public sealed class ReturnsETagAttribute : Attribute;
+
 /// <summary>
 /// Enforces both attributes in one place: 428 when a required If-Match is missing; otherwise one 400 validation problem
 /// listing every malformed header next to any binding error. Does not depend on [ApiController]'s automatic 400.

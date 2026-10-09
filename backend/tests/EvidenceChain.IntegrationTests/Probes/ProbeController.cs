@@ -34,6 +34,8 @@ public sealed class ProbeController : ControllerBase
         "key-reused" => new IdempotencyKeyReusedException(Guid.Empty),
         "in-flight" => new IdempotencyInFlightException(Guid.Empty),
         "exhausted" => new DailyIndexExhaustedException(EvidenceTypes.Log, new DateOnly(2026, 10, 9)),
+        "busy" => new ConcurrentWriteException("LOG202610090001"),
+        "invalid-field" => new InvalidRequestException("toCustodianId", "Send it to a user with the Custodio role."),
         _ => new InvalidOperationException("Unexpected failure with a secret detail."),
     };
 

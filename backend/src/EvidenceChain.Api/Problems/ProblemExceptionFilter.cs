@@ -7,6 +7,7 @@ using EvidenceChain.Infrastructure.Catalog;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace EvidenceChain.Api.Problems;
 
@@ -31,6 +32,8 @@ internal sealed class ProblemExceptionFilter(ProblemDetailsFactory problems, IUs
             IdempotencyKeyReusedException e => Problem(http, StatusCodes.Status422UnprocessableEntity, ProblemTypes.IdempotencyKeyReused, "Idempotency-Key reused.", e.Message),
             IdempotencyInFlightException e => Problem(http, StatusCodes.Status409Conflict, ProblemTypes.IdempotencyInFlight, "Request still in progress.", e.Message),
             DailyIndexExhaustedException e => Problem(http, StatusCodes.Status409Conflict, ProblemTypes.DailyIndexExhausted, "No evidence codes left for that day.", e.Message),
+            InvalidRequestException e => Invalid(http, e.Field, e.Message),
+            ConcurrentWriteException e => Problem(http, StatusCodes.Status409Conflict, ProblemTypes.ConcurrentWrite, "Busy; retry.", e.Message),
             _ => null,
         };
         if (problem is null)
@@ -38,6 +41,14 @@ internal sealed class ProblemExceptionFilter(ProblemDetailsFactory problems, IUs
 
         context.Result = new ObjectResult(problem) { StatusCode = problem.Status, ContentTypes = { "application/problem+json" } };
         context.ExceptionHandled = true;
+    }
+
+    /// <summary>The same 400 a binding error gives, on the field that names something unusable.</summary>
+    private ProblemDetails Invalid(HttpContext http, string field, string message)
+    {
+        var errors = new ModelStateDictionary();
+        errors.AddModelError(field, message);
+        return problems.CreateValidationProblemDetails(http, errors);
     }
 
     /// <summary>Through the factory, so the RFC defaults and the trace id apply as to every other problem.</summary>

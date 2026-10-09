@@ -7,6 +7,324 @@ servers:
   - url: http://localhost:8081
     description: docker compose
 paths:
+  '/api/v1/custody-transfers/{id}':
+    get:
+      tags:
+        - CustodyTransfers
+      summary: 'A transfer as it stands now, with its ETag.'
+      parameters:
+        - name: id
+          in: path
+          description: The transfer id.
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag:
+              description: The resource's version; send it back as If-Match.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferResource'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+      security:
+        - Bearer: [ ]
+  /api/v1/custody-transfers:
+    post:
+      tags:
+        - CustodyTransfers
+      summary: Requests that the evidence's current custodian hand it to another custodian.
+      description: "Idempotent per Idempotency-Key: resending the same request answers 201 with the transfer as it is now\n(Idempotent-Replayed: true); the same key with a different request is 422. An evidence has at most one pending\ntransfer; a second request is 409 with the one already pending."
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          description: A new UUID for each distinct write; resend the same one to retry safely.
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestTransferBody'
+          text/json:
+            schema:
+              $ref: '#/components/schemas/RequestTransferBody'
+          application/*+json:
+            schema:
+              $ref: '#/components/schemas/RequestTransferBody'
+        required: true
+      responses:
+        '201':
+          description: Created
+          headers:
+            ETag:
+              description: The resource's version; send it back as If-Match.
+              schema:
+                type: string
+            Idempotent-Replayed:
+              description: '"true" when this answers an earlier request with the same Idempotency-Key.'
+              schema:
+                type: string
+            Location:
+              description: Where the created resource can be read.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferResource'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TransferConflictProblemDetails'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblemDetails'
+      security:
+        - Bearer: [ ]
+  '/api/v1/custody-transfers/{id}/accept':
+    post:
+      tags:
+        - CustodyTransfers
+      summary: The recipient takes custody.
+      description: "If-Match must carry the ETag the recipient last read: if the transfer has changed since, the answer is 409 with\nits current state. Idempotent per Idempotency-Key: resending answers 200 with the decision already made."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: Idempotency-Key
+          in: header
+          description: A new UUID for each distinct write; resend the same one to retry safely.
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match
+          in: header
+          description: 'The ETag of the resource as last read, quotes included; a newer version answers 409.'
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: 'null'
+                - $ref: '#/components/schemas/AcceptTransferBody'
+          text/json:
+            schema:
+              oneOf:
+                - type: 'null'
+                - $ref: '#/components/schemas/AcceptTransferBody'
+          application/*+json:
+            schema:
+              oneOf:
+                - type: 'null'
+                - $ref: '#/components/schemas/AcceptTransferBody'
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag:
+              description: The resource's version; send it back as If-Match.
+              schema:
+                type: string
+            Idempotent-Replayed:
+              description: '"true" when this answers an earlier request with the same Idempotency-Key.'
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferResource'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TransferConflictProblemDetails'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblemDetails'
+        '428':
+          description: Precondition Required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+      security:
+        - Bearer: [ ]
+  '/api/v1/custody-transfers/{id}/reject':
+    post:
+      tags:
+        - CustodyTransfers
+      summary: The recipient refuses custody; it stays where it was.
+      description: Same If-Match and Idempotency-Key rules as accept.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: Idempotency-Key
+          in: header
+          description: A new UUID for each distinct write; resend the same one to retry safely.
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match
+          in: header
+          description: 'The ETag of the resource as last read, quotes included; a newer version answers 409.'
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectTransferBody'
+          text/json:
+            schema:
+              $ref: '#/components/schemas/RejectTransferBody'
+          application/*+json:
+            schema:
+              $ref: '#/components/schemas/RejectTransferBody'
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag:
+              description: The resource's version; send it back as If-Match.
+              schema:
+                type: string
+            Idempotent-Replayed:
+              description: '"true" when this answers an earlier request with the same Idempotency-Key.'
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferResource'
+        '404':
+          description: Not Found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '409':
+          description: Conflict
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/TransferConflictProblemDetails'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblemDetails'
+        '428':
+          description: Precondition Required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+      security:
+        - Bearer: [ ]
   /api/v1/evidence:
     get:
       tags:
@@ -216,6 +534,14 @@ paths:
                 $ref: '#/components/schemas/ValidationProblemDetails'
 components:
   schemas:
+    AcceptTransferBody:
+      type: object
+      properties:
+        notes:
+          type:
+            - 'null'
+            - string
+          description: 'Optional notes on receipt: up to 500 characters.'
     AnomalySeverity:
       enum:
         - Medium
@@ -535,6 +861,32 @@ components:
           type:
             - 'null'
             - string
+    RejectTransferBody:
+      required:
+        - reason
+      type: object
+      properties:
+        reason:
+          type: string
+          description: 'Why custody is refused: 3 to 500 characters.'
+    RequestTransferBody:
+      required:
+        - evidenceCode
+        - reason
+      type: object
+      properties:
+        evidenceCode:
+          type: string
+          description: 'The evidence code, e.g. LOG202609110007.'
+        toCustodianId:
+          maximum: 2147483647
+          minimum: 1
+          type: integer
+          description: The Custodio who should receive it; not the one holding it now.
+          format: int32
+        reason:
+          type: string
+          description: 'Why it should move: 3 to 500 characters.'
     TokenRequest:
       required:
         - userName
@@ -567,6 +919,140 @@ components:
       enum:
         - Overdue
         - AcceptedLate
+    TransferConflictProblemDetails:
+      required:
+        - currentState
+      type: object
+      properties:
+        type:
+          type:
+            - 'null'
+            - string
+        title:
+          type:
+            - 'null'
+            - string
+        status:
+          type:
+            - 'null'
+            - integer
+          format: int32
+        detail:
+          type:
+            - 'null'
+            - string
+        instance:
+          type:
+            - 'null'
+            - string
+        currentState:
+          $ref: '#/components/schemas/TransferState'
+        currentETag:
+          type:
+            - 'null'
+            - string
+          description: Also sent as the ETag header.
+        actedBy:
+          oneOf:
+            - type: 'null'
+            - description: 'The decider once decided, otherwise the requester.'
+              $ref: '#/components/schemas/UserSummary'
+        actedAtUtc:
+          type: string
+          format: date-time
+      description: 'A 409 on a transfer: what it is now, who last acted on it and when, and the ETag to retry with.'
+    TransferResource:
+      required:
+        - transferId
+        - evidenceCode
+        - status
+        - from
+        - to
+        - requestedBy
+        - requestedAtUtc
+        - reason
+        - decidedBy
+        - decidedAtUtc
+        - decisionNotes
+        - etag
+      type: object
+      properties:
+        transferId:
+          type: integer
+          format: int64
+        evidenceCode:
+          type: string
+        status:
+          $ref: '#/components/schemas/TransferStatus'
+        from:
+          $ref: '#/components/schemas/PersonRef'
+        to:
+          $ref: '#/components/schemas/PersonRef'
+        requestedBy:
+          $ref: '#/components/schemas/PersonRef'
+        requestedAtUtc:
+          type: string
+          format: date-time
+        reason:
+          type: string
+        decidedBy:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/PersonRef'
+        decidedAtUtc:
+          type:
+            - 'null'
+            - string
+          format: date-time
+        decisionNotes:
+          type:
+            - 'null'
+            - string
+        etag:
+          type: string
+    TransferState:
+      required:
+        - transferId
+        - evidenceId
+        - status
+        - fromCustodianId
+        - toCustodianId
+        - requestedById
+        - requestedAtUtc
+        - decidedById
+        - decidedAtUtc
+      type: object
+      properties:
+        transferId:
+          type: integer
+          format: int64
+        evidenceId:
+          type: integer
+          format: int64
+        status:
+          $ref: '#/components/schemas/TransferStatus'
+        fromCustodianId:
+          type: integer
+          format: int32
+        toCustodianId:
+          type: integer
+          format: int32
+        requestedById:
+          type: integer
+          format: int32
+        requestedAtUtc:
+          type: string
+          format: date-time
+        decidedById:
+          type:
+            - 'null'
+            - integer
+          format: int32
+        decidedAtUtc:
+          type:
+            - 'null'
+            - string
+          format: date-time
     TransferStatus:
       enum:
         - Pending
@@ -688,5 +1174,6 @@ components:
       scheme: bearer
       bearerFormat: JWT
 tags:
+  - name: CustodyTransfers
   - name: Evidence
   - name: Auth

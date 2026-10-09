@@ -26,6 +26,9 @@ public static class ProblemTypes
     /// <summary>428: the write needs If-Match with the ETag last read.</summary>
     public const string PreconditionRequired = Prefix + "precondition-required";
 
+    /// <summary>409: other writes to the same evidence kept landing first; nothing changed, so retry.</summary>
+    public const string ConcurrentWrite = Prefix + "concurrent-write";
+
     /// <summary>409: every code for that evidence type and day is taken.</summary>
     public const string DailyIndexExhausted = Prefix + "daily-index-exhausted";
 }

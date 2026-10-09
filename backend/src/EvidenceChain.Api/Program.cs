@@ -55,7 +55,7 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
     .WithOrigins(corsOrigins)
     .AllowAnyHeader()
     .AllowAnyMethod()
-    .WithExposedHeaders("ETag", "Location")));
+    .WithExposedHeaders("ETag", "Location", "Idempotent-Replayed")));
 
 var app = builder.Build();
 
