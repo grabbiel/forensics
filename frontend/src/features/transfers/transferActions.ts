@@ -19,12 +19,15 @@ type WriteKind = 'request' | Decision
  * What a transfer action answers, naming the write it was. Never thrown, so the page stays mounted and can explain it:
  * - done: the server did it (or had already done it, when it repeats an earlier request with the same key);
  * - refused: the server answered with a problem; a 409 carries the transfer's current state;
+ * - throttled: a 429, sent before the write ran, so nothing was saved; the intent stays for a retry with the same
+ *   key once the seconds it asks for have passed;
  * - unknown: no answer, a timeout, a server error, or the first send still running (status 0 when there was no
  *   answer at all). The server may or may not have done it, so the intent stays for a retry with the same key.
  */
 export type WriteResult =
   | { outcome: 'done'; write: WriteKind; transfer: TransferResource; replayed: boolean }
   | { outcome: 'refused'; write: WriteKind; status: number; problem?: ProblemDetails }
+  | { outcome: 'throttled'; write: WriteKind; retryAfterSeconds?: number }
   | { outcome: 'unknown'; write: WriteKind; status: number; problem?: ProblemDetails }
 
 /** POST /evidence/:id/transfer: form fields toCustodianId, reason, idempotencyKey. */
@@ -75,6 +78,8 @@ async function write(
       return data<WriteResult>({ outcome: 'done', write: kind, transfer: sent.body, replayed: sent.headers.get('Idempotent-Replayed') === 'true' }, { status: sent.status })
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) throw error // signedIn sends the user to sign in again
+      if (error instanceof ApiError && error.status === 429)
+        return data<WriteResult>({ outcome: 'throttled', write: kind, retryAfterSeconds: error.retryAfterSeconds }, { status: 429 })
       if (error instanceof ApiError && !outcomeUnknown(error)) {
         // Nothing was saved and the same key may be sent again.
         if (error.problem?.type !== PROBLEM.concurrentWrite) settled()

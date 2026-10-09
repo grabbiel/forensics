@@ -263,6 +263,48 @@ describe('a request that got no answer', () => {
   })
 })
 
+describe('a request the server throttles', () => {
+  it('says nothing was saved, re-reads nothing, and retries with the same Idempotency-Key once the wait is over', async () => {
+    signInAs('Investigador')
+    const db = { detail }
+    const reads = evidenceApi(db)
+    const keys: string[] = []
+    server.use(
+      http.post('/api/v1/custody-transfers', ({ request }) => {
+        const refused = refuseBadHeaders(request, false)
+        if (refused) return refused
+        keys.push(request.headers.get('Idempotency-Key')!)
+        // The limiter answers before the endpoint runs; the real API then creates the transfer on the retry.
+        if (keys.length === 1)
+          return problem(429, { type: 'urn:evidence-chain:problem:rate-limited', title: 'Too many requests' }, { 'Retry-After': '1' })
+        db.detail = { ...detail, pendingTransfer: pendingToDiego }
+        return transferResponse(pendingToDiego, 201)
+      }),
+    )
+    await openEvidence()
+
+    await requestTo('Diego Salas', 'Peritaje externo')
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('No se pudo solicitar la transferencia: el servidor recibió demasiadas operaciones seguidas y no guardó nada. Espera 1 s antes de reintentar.')
+    expect(alert).toHaveFocus()
+    expect(reads.detail).toBe(1)
+    const retry = within(alert).getByRole('button', { name: 'Reintentar' })
+    expect(retry).toHaveAttribute('aria-disabled', 'true')
+    await userEvent.click(retry)
+    expect(keys).toHaveLength(1)
+
+    await waitFor(() => expect(retry).toHaveAttribute('aria-disabled', 'false'), { timeout: 2_000 })
+    expect(alert).toHaveTextContent('Ya puedes reintentar.')
+    await userEvent.click(retry)
+
+    expect(await screen.findByText('Pendiente')).toBeInTheDocument()
+    expect(keys).toHaveLength(2)
+    expect(keys[0]).toMatch(UUID_V7)
+    expect(keys[1]).toBe(keys[0])
+  })
+})
+
 describe('the transfer dialogs from the keyboard', () => {
   /** The page behind is hidden, and Tab, through more stops than the dialog has, never leaves it. */
   async function expectModal(dialog: HTMLElement) {

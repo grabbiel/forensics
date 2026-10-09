@@ -233,9 +233,9 @@ describe('resource routes', () => {
     expect(router.state.location.search).toBe(`?redirectTo=${encodeURIComponent(`/evidence/${detail.code}`)}`)
   })
 
-  it('re-reads the evidence after every answer to a write, never re-running a verification', async () => {
+  it('re-reads the evidence after every answer to a write but a 429, never re-running a verification', async () => {
     signInAs('Investigador')
-    const answers = [201, 409, 0, 422, 500]
+    const answers = [201, 409, 0, 422, 500, 429]
     const fetchMock = fakeApi((url) => {
       if (url.endsWith('/chain/verify')) return json(200, { code: detail.code, valid: true, verifiedThroughSeq: 1, eventCount: 1, checkedAtUtc: '2026-10-09T00:00:00Z', firstInvalid: null })
       if (url !== '/api/v1/custody-transfers') return undefined
@@ -250,12 +250,13 @@ describe('resource routes', () => {
     await waitFor(() => expect(calls('/chain/verify')).toBe(1))
     expect(calls('')).toBe(1)
 
-    for (const [outcome, reads] of [['done', 2], ['refused', 3], ['unknown', 4], ['refused', 5], ['unknown', 6]] as const) {
+    for (const [outcome, reads] of [['done', 2], ['refused', 3], ['unknown', 4], ['refused', 5], ['unknown', 6], ['throttled', 6]] as const) {
       await userEvent.click(screen.getByRole('button', { name: 'enviar' }))
       await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(outcome))
       await waitFor(() => expect(calls('')).toBe(reads))
       expect(calls('/chain/verify')).toBe(1)
       await act(async () => {}) // let any revalidation settle before the next write
     }
+    expect(calls('')).toBe(6) // still, once the throttled write has settled
   })
 })

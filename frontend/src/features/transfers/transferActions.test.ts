@@ -86,6 +86,17 @@ describe('transfer actions', () => {
     expect(getIntent(requestScope)?.idempotencyKey).toBe(intent.idempotencyKey)
   })
 
+  it('calls a 429 throttled with its wait, keeping the intent, as the server turned the write away before running it', async () => {
+    signInAs('Investigador')
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => reply(429, { status: 429 }, 'application/problem+json', { 'Retry-After': '3' })))
+
+    const { intent, result } = sendRequest()
+    const { data, status } = await result
+
+    expect([data, status]).toEqual([{ outcome: 'throttled', write: 'request', retryAfterSeconds: 3 }, 429])
+    expect(getIntent(requestScope)?.idempotencyKey).toBe(intent.idempotencyKey)
+  })
+
   it('calls a write unknown, keeping its intent, after no answer, a timeout, a server error or an answer that the first send still runs', async () => {
     signInAs('Investigador')
     const inFlight = { status: 409, type: 'urn:evidence-chain:problem:idempotency-in-flight' }
