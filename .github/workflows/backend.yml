@@ -45,9 +45,9 @@ jobs:
       # The tests' only image, pulled up front with retries: a registry hiccup fails this step, not every database test.
       - name: Pull SQL Server
         run: |
-          for attempt in 1 2 3; do
-            docker pull mcr.microsoft.com/mssql/server:2025-latest && exit 0
-            sleep $((attempt * 20))
+          for delay in 0 20 40; do
+            sleep "$delay"
+            timeout 5m docker pull mcr.microsoft.com/mssql/server:2025-latest && exit 0
           done
           exit 1
 
