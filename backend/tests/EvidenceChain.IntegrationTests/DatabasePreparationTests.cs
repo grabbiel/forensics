@@ -46,6 +46,24 @@ public sealed class DatabasePreparationTests(ApiFactory factory)
         Assert.Equal(229, error.Number); // permission denied on object
     }
 
+    [Fact]
+    public async Task App_login_is_denied_rewriting_custody_history()
+    {
+        Assert.SkipWhen(factory.SkipReason is not null, factory.SkipReason ?? "");
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        // An explicit DENY, not just a missing grant, so a future write grant cannot reopen it.
+        await using var admin = new SqlConnection(factory.AdminConnectionString);
+        await admin.OpenAsync(cancellationToken);
+        await using var command = new SqlCommand("""
+            SELECT STRING_AGG(p.state_desc + ' ' + p.permission_name, ', ') WITHIN GROUP (ORDER BY p.permission_name)
+            FROM sys.database_permissions AS p
+            WHERE p.major_id = OBJECT_ID('dbo.CustodyEvents') AND p.grantee_principal_id = DATABASE_PRINCIPAL_ID('evidence_app')
+            """, admin);
+
+        Assert.Equal("DENY DELETE, DENY UPDATE", await command.ExecuteScalarAsync(cancellationToken));
+    }
+
     private async Task<SqlConnection> OpenAsAppAsync(CancellationToken cancellationToken)
     {
         var connection = new SqlConnection(factory.ConnectionString);

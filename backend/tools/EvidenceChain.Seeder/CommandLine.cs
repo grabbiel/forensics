@@ -3,7 +3,7 @@ namespace EvidenceChain.Seeder;
 /// <summary>Minimal parser: a command followed by --key value pairs or known bare --flags.</summary>
 internal static class CommandLine
 {
-    private static readonly HashSet<string> Flags = new(StringComparer.OrdinalIgnoreCase) { "clean" };
+    private static readonly HashSet<string> Flags = new(StringComparer.OrdinalIgnoreCase) { "clean", "if-empty", "reset" };
 
     /// <summary>Splits arguments into a command and its options; a value-taking option without a value is an error.</summary>
     public static (string Command, IReadOnlyDictionary<string, string> Options) Parse(string[] args)
