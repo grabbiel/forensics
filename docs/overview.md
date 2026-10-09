@@ -1,46 +1,51 @@
 # Overview
 
+Evidence Chain records digital evidence, its custody history and transfers between custodians. Both journeys in the brief run end to end, from React through the .NET 10 API to SQL Server.
+
+## Scope
+
+**Done**
+- **Review evidence:** an inbox filtered by text, type, custodian and integrity, sorted by last event and paged by keyset, with every filter in the URL. The detail page shows the custody timeline, the overdue-transfer anomaly with severity and explanation, and on-demand chain verification that names the first invalid event.
+- **Transfer custody:** request, accept and reject through an explicit state machine; `If-Match` with `409` carrying the current state; `Idempotency-Key` on every write. The UI shows the request as pending at once and reconciles it after a `409` or a lost answer.
+- **Integrity:** an HMAC-SHA-256 chain per evidence. Custody events are append-only: the API's database user cannot update or delete them.
+- **Platform:** JWT sign-in with server-side role and recipient checks; `application/problem+json` errors; `openapi.yaml` checked against the running API; a reproducible seed of 1,000 evidences and 10,000 events.
+- **Extras:** deployment to Azure (azd + Bicep); a measurement with 200,000 events; an hourly integrity sweep; transfers accepted after the deadline are also flagged.
+
+**Left out:** file upload (the seed provides the content), rate limiting and i18n (the UI is in Spanish). Sign-in picks a demo user without a password. The first alert is designed, not provisioned.
+
+## Run, seed and test
+
+`docker compose up --build`, then open http://localhost:8080; the API listens on http://localhost:8081. The one-shot `migrate` service applies the migrations and loads seed 42. The [README](../README.md) lists the demo users, fixtures and options.
+
+Tests: `dotnet test --solution backend/EvidenceChain.slnx` (.NET 10 SDK, Docker) and `npm test` in `frontend/` (Node 24). Both are required checks on every pull request.
+
+## How the main query was measured
+
+[`database/measure-inbox.sql`](../database/measure-inbox.sql) runs the statements EF Core sends for `GET /api/v1/evidence` under `SET STATISTICS IO, TIME ON`. Logical reads per query:
+
+| Query (26 rows) | 1,000 evidences, local / Azure SQL S1 | 20,000 evidences, local |
+|---|---|---|
+| First page | 35 / 40 | 89 (index seek on `IX_EvidenceInbox_Recent`, 26 key lookups) |
+| First page for one custodian | 35 / 40 | 89 |
+| Last page by keyset | 35 / 40 | 88 |
+| Last page by `OFFSET` | 35 / 40 | 653 (clustered scan, sort of 20,001 rows; 23 ms) |
+| Text search (`LIKE '%…%'`) | 35 / 40 | 653 (scan; 46 ms) |
+
+At 1,000 rows the projection fits in 35–40 pages, so SQL Server scans it for every query, in under 3 ms. At 20,000 rows (`SEED_PROFILE=scale`), keyset reads stay flat at any depth while `OFFSET` reads the whole table. Text search is the next index to add.
+
 ## Tests
 
-### How to run them
-
-```bash
-dotnet test --solution backend/EvidenceChain.slnx
-```
-
-```bash
-cd frontend && npm test
-```
-
-Database tests start SQL Server 2025 in a container (Testcontainers), so they need Docker. Without it they skip on a laptop and fail on CI, so a green check always includes them. CI runs both suites on every pull request; `Backend tests` and `Frontend tests` are required checks on `main`.
-
-The API tests run against real SQL Server, with no fakes. The two journeys run as the least-privilege `evidence_app` login over databases seeded with the reference dataset (seed 42), as in `docker compose`.
-
-### What the brief asks to test
-
-| Requirement | Where | What it shows |
+| Brief requirement | Where | What it shows |
 |---|---|---|
-| Tampered chain | `ReviewEvidenceTests` | Through `GET …/chain/verify`, the intact fixture is valid. The event-tampered fixture is `MAC_MISMATCH` at seq 3, the content-tampered one `CONTENT_HASH_MISMATCH` at 1, and the custodian-tampered one `CUSTODY_PROJECTION_MISMATCH`, each at the right event id, recorded as `Invalid` and counted as a fixture failure. |
-| | `ChainVerifierTests` | Altering any canonical field of event *k* is reported at *k*. Directly edited rows and signed histories the state machine forbids are also caught. |
-| Idempotency | `TransferCustodyTests` | The same key and body sent 8 times in parallel make one transfer, and every answer is 201 with its id. The same key with another body is 422. A retry spelled differently still replays. Decisions replay too, even when retried in parallel. |
-| Concurrency conflict | `TransferCustodyTests` | Two parallel accepts with one `If-Match` give one 200 and one 409 with `currentState.status = "Accepted"`, who acted, when, and the current ETag. Bursts of duplicates and competing decisions never fail and leave every chain valid. |
-| Gap-free codes | `DailyIndexAllocatorTests` | 55 parallel registrations on one type and day, 5 of them abandoned after taking a number, commit exactly codes 1 to 50. |
-| Stale response | `journeys.test.tsx` | Filter A's request is held at the server while filter B's is answered. The inbox shows B, and still shows B after A's answer is released (the router had already abandoned it). |
-| 409 rollback | `journeys.test.tsx` | Another tab rejected the transfer, so accepting it gets a 409 with `currentState`. Neither while the accept is out nor after does the page say "Aceptada" or change the custodian. The card then shows the transfer as the server left it ("Rechazada"), and the alert says who acted and when, and takes focus. |
-| Same key on retry | `journeys.test.tsx` | The first request fails at the network. The retry, and the same request made again after a reload (only `sessionStorage` kept), carry the same `Idempotency-Key`. |
-| Modal keyboard | `journeys.test.tsx` | The request and reject dialogs open on Enter with focus on the first field, hide the page behind, keep Tab inside, close on Escape and return focus to their button. |
+| Tampered chain | `ReviewEvidenceTests`, `ChainVerifierTests` | Each tamper fixture fails at the right event with its own reason; editing any signed field of event *k* is reported at *k*. |
+| Idempotency | `TransferCustodyTests` | Eight parallel sends of one key make one transfer; the same key with another body is `422`. |
+| Concurrency conflict | `TransferCustodyTests` | Two parallel accepts give one `200` and one `409` with the current state. |
+| Stale response, 409 rollback | `frontend/src/journeys.test.tsx` | Through the real router and `fetch` against MSW: an earlier filter's late answer never replaces the current one; a `409` never shows the transfer as accepted, shows the server's state and focuses an alert. |
 
-The frontend rows run the real router, `fetch` and API client against [MSW](https://mswjs.io). It answers as the API does, including its checks of `Idempotency-Key` and `If-Match`, so headers are checked as sent; a request it has no answer for fails the test.
+The API tests run against SQL Server 2025 in a container (Testcontainers); the journey tests connect as the least-privilege app login. Also covered: every state × command × role of the state machine, gap-free evidence codes under 55 parallel registrations, the seed's reproducibility, problem details and the published contract.
 
-### Also covered
-
-- **Domain:** every state × command × role combination of the transfer state machine; the overdue rule's boundaries and severity; the canonical encoding pinned by a golden MAC.
-- **Data:** the seed (identical loads matching `manifest.reference.csv`, all-or-nothing reruns); schema rules enforced by SQL Server; the app login's column-level permissions.
-- **API:** sign-in and rejected tokens (wrong key, expired, `alg: none`); role and recipient policies; problem details for every client-facing error; `Idempotency-Key` and `If-Match` rules; inbox paging and filters; the published `openapi.yaml` matching the running API.
-- **Web:** sign-in, session expiry and the route guards; inbox filters, sort, pages and stale cursors; verification outcomes, including a missing event; each transfer state (sending, done, refused, unknown) and pending-intent keys.
-
-### Not tested, and why
-
-- **Automated accessibility audits.** No axe or Lighthouse run is wired into CI.
-- **Azure-specific auth paths.** The managed-identity SQL connection and Key Vault references only exist in App Service. Locally and on CI the API uses a SQL login and published development keys, so these paths are only exercised by deploying.
-- **Load.** There are no load or soak tests; the suite proves behaviour under contention, not throughput.
+**Not tested, and why**
+- **Accessibility audits:** no axe or Lighthouse run. Keyboard paths and focus are tested; contrast was checked by hand.
+- **Azure-only paths:** the managed-identity SQL connection and Key Vault references exist only in App Service; the deployment smoke test covers them.
+- **Load:** contention is tested for correctness, not throughput.
+- **Browsers:** components run in jsdom; the UI was checked by hand in Chromium only.
