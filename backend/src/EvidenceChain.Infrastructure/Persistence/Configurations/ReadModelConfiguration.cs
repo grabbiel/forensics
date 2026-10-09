@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace EvidenceChain.Infrastructure.Persistence.Configurations;
 
-/// <summary>Maps the A4 inbox projection; every index ends in (LastEventAtUtc DESC, EvidenceId DESC) for keyset paging.</summary>
+/// <summary>Maps the EvidenceInbox projection; every index ends in (LastEventAtUtc DESC, EvidenceId DESC) for keyset paging.</summary>
 internal sealed class EvidenceInboxConfiguration : IEntityTypeConfiguration<EvidenceInboxRow>
 {
     public void Configure(EntityTypeBuilder<EvidenceInboxRow> builder)

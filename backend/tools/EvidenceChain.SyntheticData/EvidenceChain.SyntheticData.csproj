@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Pure, deterministic generator for the synthetic evidence dataset (roadmap §2.3). No database access. -->
+  <!-- Pure, deterministic generator for the synthetic evidence dataset. No database access. -->
 
   <ItemGroup>
     <!-- Codes come from the same EvidenceCode.Format the API uses. -->

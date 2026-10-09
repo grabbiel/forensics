@@ -39,7 +39,7 @@ public sealed class IntegrityKeyRing
     }
 }
 
-/// <summary>B10 hash chain: each event's MAC is HMAC-SHA-256 over its canonical bytes, which include the previous MAC.</summary>
+/// <summary>Per-evidence hash chain: each event's MAC is HMAC-SHA-256 over its canonical bytes, which include the previous MAC.</summary>
 public static class ChainHasher
 {
     /// <summary>MAC of <paramref name="link"/> with the key named by its KeyId.</summary>

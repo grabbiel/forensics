@@ -1,9 +1,8 @@
-using EvidenceChain.Infrastructure.Persistence;
 using EvidenceChain.Seeder;
 using EvidenceChain.SyntheticData;
 using Microsoft.Data.SqlClient;
 
-// Evidence Chain seeder: prepare the database, export or load the synthetic dataset (roadmap §2.3-§2.5).
+// Evidence Chain seeder: prepare the database, export or load the synthetic dataset.
 using var cancellation = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
 
@@ -44,15 +43,6 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
             }
 
             Console.WriteLine("Database prepared.");
-            return 0;
-        }
-
-        case "tracer":
-        {
-            CommandLine.Allow(options, "connection");
-            await using var db = SqlServerSetup.CreateContext(RequireConnection());
-            var codes = await TracerData.InsertIfEmptyAsync(db, TimeProvider.System.GetUtcNow().UtcDateTime, cancellationToken);
-            Console.WriteLine(codes.Count == 0 ? "Evidence already present; nothing inserted." : $"Inserted: {string.Join(", ", codes)}");
             return 0;
         }
 
@@ -109,7 +99,6 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
             Console.WriteLine("""
                 Usage:
                   prepare   --connection <cs> [--app-login <name> --app-password <pwd>]   enable RCSI; create the local app login
-                  tracer    --connection <cs>                                             insert five tracer rows if empty
                   generate  [--seed 42] [--anchor 2026-10-01T00:00:00Z] [--out <dir>] [--clean]
                             [--profile reference|scale] [--evidences N] [--events N] [--max-transfers N] [--days N]
                                                                                           write the files and manifest.csv

@@ -13,7 +13,7 @@ using Microsoft.IdentityModel.JsonWebTokens;
 
 namespace EvidenceChain.IntegrationTests;
 
-/// <summary>Demo JWT sign-in, secure-by-default authorization, role policies and the recipient check (roadmap §3.1).</summary>
+/// <summary>Demo JWT sign-in, secure-by-default authorization, role policies and the recipient check.</summary>
 [Collection(nameof(SqlCollection))]
 public sealed class AuthTests(ApiFactory factory)
 {

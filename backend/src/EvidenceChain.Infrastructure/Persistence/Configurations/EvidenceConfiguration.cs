@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace EvidenceChain.Infrastructure.Persistence.Configurations;
 
-/// <summary>Maps <see cref="Evidence"/>; the code is a persisted computed column (roadmap F29).</summary>
+/// <summary>Maps <see cref="Evidence"/>; the code is a persisted computed column.</summary>
 internal sealed class EvidenceConfiguration : IEntityTypeConfiguration<Evidence>
 {
     /// <summary>Raises if InitialCustodianId changes; created by the CustodySchema migration.</summary>

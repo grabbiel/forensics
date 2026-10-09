@@ -6,7 +6,7 @@ using EvidenceChain.IntegrationTests.Probes;
 
 namespace EvidenceChain.IntegrationTests;
 
-/// <summary>Idempotency-Key and If-Match are enforced before the action runs and declared in the contract (roadmap §3.1).</summary>
+/// <summary>Idempotency-Key and If-Match are enforced before the action runs and declared in the contract.</summary>
 [Collection(nameof(SqlCollection))]
 public sealed class WriteHeaderTests(ApiFactory factory)
 {

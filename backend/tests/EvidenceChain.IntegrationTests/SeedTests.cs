@@ -14,7 +14,7 @@ using SeedMode = seeder::EvidenceChain.Seeder.SeedMode;
 
 namespace EvidenceChain.IntegrationTests;
 
-/// <summary>Loads the reference dataset into fresh databases, checks what landed (roadmap §2.4) and runs the domain rules over it (§2.1).</summary>
+/// <summary>Loads the reference dataset into fresh databases, checks what landed and runs the domain rules over it.</summary>
 [Collection(nameof(SqlCollection))]
 public sealed class SeedTests(ApiFactory factory)
 {
