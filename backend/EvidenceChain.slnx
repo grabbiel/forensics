@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/EvidenceChain.Api/EvidenceChain.Api.csproj" />
     <Project Path="src/EvidenceChain.Application/EvidenceChain.Application.csproj" />
     <Project Path="src/EvidenceChain.Domain/EvidenceChain.Domain.csproj" />
     <Project Path="src/EvidenceChain.Infrastructure/EvidenceChain.Infrastructure.csproj" />
