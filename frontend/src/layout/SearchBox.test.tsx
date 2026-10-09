@@ -56,6 +56,15 @@ describe('SearchBox', () => {
     expect(router.state.location.search).toBe('?q=a')
   })
 
+  it('starts the listing again from the first page', async () => {
+    const { router, input } = renderSearch(['/?type=LOG&cursor=abc'])
+
+    typeInto(input, 'vpn')
+    await advance(DEBOUNCE_MS)
+
+    expect(router.state.location.search).toBe('?type=LOG&q=vpn')
+  })
+
   it('drops q when the field is cleared and submitted', async () => {
     const { router, input } = renderSearch(['/?q=old'])
 

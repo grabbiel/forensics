@@ -501,6 +501,44 @@ paths:
                 $ref: '#/components/schemas/ProblemDetails'
       security:
         - Bearer: [ ]
+  /api/v1/people:
+    get:
+      tags:
+        - People
+      summary: 'Lists users by display name, optionally only one role (e.g. the custodians a transfer can go to).'
+      parameters:
+        - name: role
+          in: query
+          description: 'Investigador, Custodio or Supervisor, spelled exactly.'
+          schema:
+            enum:
+              - Investigador
+              - Custodio
+              - Supervisor
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PersonSummary'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+      security:
+        - Bearer: [ ]
   /api/v1/auth/token:
     post:
       tags:
@@ -837,6 +875,20 @@ components:
           format: int32
         displayName:
           type: string
+    PersonSummary:
+      required:
+        - id
+        - displayName
+        - role
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+        displayName:
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
     ProblemDetails:
       type: object
       properties:
@@ -1176,4 +1228,5 @@ components:
 tags:
   - name: CustodyTransfers
   - name: Evidence
+  - name: People
   - name: Auth

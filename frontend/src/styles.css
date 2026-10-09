@@ -29,6 +29,8 @@
   --on-accent: #fcfcfd;
   --focus: #1a73e8;
   --danger: #c5221f;
+  --warning: #a35400;
+  --success: #16774a;
   --search-shadow: 0 4px 14px rgb(31 158 98 / 0.1);
 
   --radius-pill: 999px;
@@ -63,6 +65,8 @@
     --on-accent: #0d2419;
     --focus: #8ab4f8;
     --danger: #f28b82;
+    --warning: #f6b26b;
+    --success: #3dc98a;
     --search-shadow: none;
   }
 }
@@ -359,8 +363,18 @@ svg {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--text-3);
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.subbar__sort:hover {
+  color: var(--text);
 }
 
 /* Indeterminate bar along the box's top edge while a loader runs. */
@@ -757,7 +771,6 @@ svg {
 
 .timeline__list {
   display: grid;
-  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -768,6 +781,30 @@ svg {
   grid-template-columns: 40px 1fr auto;
   gap: 12px;
   align-items: baseline;
+  padding: 10px 8px;
+  border-top: 1px solid var(--line-soft);
+  border-radius: var(--radius-control);
+  scroll-margin-top: 8rem;
+}
+
+.timeline__item:first-child {
+  border-top: 0;
+}
+
+/* The first event the verification refused: a frame and words, not colour alone. */
+.timeline__item--invalid {
+  background: color-mix(in srgb, var(--danger) 9%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+/* Reached from the verification's link, which moves focus here. */
+.timeline__item:focus {
+  outline: none;
+}
+
+.timeline__item:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .timeline__seq {
@@ -775,10 +812,266 @@ svg {
   font-family: var(--mono);
 }
 
+.timeline__body p {
+  margin: 0;
+}
+
+.timeline__what {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.timeline__flag {
+  color: var(--danger);
+}
+
+.timeline__ok {
+  display: inline-flex;
+  color: var(--success);
+}
+
+.timeline__notes {
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.timeline__mac {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+/* --text-3 falls short of 4.5:1 on the red tint. */
+.timeline__item--invalid .timeline__mac {
+  color: var(--text-2);
+}
+
+.timeline__mac code,
+.hash,
+.reason {
+  font-family: var(--mono);
+  letter-spacing: 0;
+}
+
+.hash {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
 .timeline__item time {
   color: var(--text-2);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---- Integrity badge ---- */
+
+.integrity {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--fill-2);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.integrity--valid {
+  background: var(--accent-soft);
+  color: var(--success);
+}
+
+.integrity--invalid {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  color: var(--danger);
+}
+
+/* ---- Inbox filters, sort and pages ---- */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 0 20px 14px;
+}
+
+.filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.filter__label {
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.filter__select {
+  min-width: 0;
+  max-width: 100%;
+  height: 32px;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sort-button:hover {
+  color: var(--text);
+}
+
+.pending-hint {
+  display: block;
+  color: var(--warning);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--line-soft);
+}
+
+/* ---- Verification ---- */
+
+.verify {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 0 20px 16px;
+}
+
+.verify__valid,
+.verify__invalid,
+.verify__error {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.verify__valid {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.verify__invalid,
+.verify__error {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.verify__invalid svg,
+.verify__valid svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+/* ---- Anomalies and the pending transfer ---- */
+
+.anomalies {
+  padding: 0 20px 16px;
+}
+
+.anomalies__list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.anomaly {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--warning);
+}
+
+.anomaly--high {
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.anomaly > svg {
+  flex: none;
+  color: var(--warning);
+}
+
+.anomaly--high > svg {
+  color: var(--danger);
+}
+
+.anomaly p {
+  margin: 0;
+}
+
+.anomaly__title {
+  font-weight: 700;
+}
+
+.anomaly__severity {
+  margin-left: 6px;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.anomaly__text {
+  color: var(--text-2);
+}
+
+.pending {
+  display: flex;
+  gap: 10px;
+  margin: 16px 20px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-surface);
+}
+
+.pending > svg {
+  flex: none;
+  color: var(--warning);
+}
+
+.pending p {
+  margin: 0;
+}
+
+.pending__reason {
+  color: var(--text-2);
+}
+
+.facts__wide {
+  grid-column: 1 / -1;
 }
 
 /* ---- Skeleton (first load) ---- */
@@ -848,9 +1141,12 @@ svg {
     padding: 16px 16px 12px;
   }
 
+  /* The count and the sort control take a line each when both do not fit. */
   .subbar {
+    flex-wrap: wrap;
+    gap: 0 12px;
     margin: 0 16px;
-    padding: 0 12px;
+    padding: 6px 12px;
   }
 
   .table-wrap {
@@ -870,11 +1166,36 @@ svg {
     clip-path: inset(50%);
   }
 
-  .table tr {
+  /* The summary bar sorts on phones; the header's own button still shows when the keyboard reaches it. */
+  .table thead:focus-within {
+    display: block;
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+  }
+
+  .table thead:focus-within tr {
+    display: flex;
+    justify-content: flex-end;
+    padding: 8px 16px;
+  }
+
+  .table thead:focus-within th:not([aria-sort]) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .table tbody tr {
     display: grid;
-    grid-template-columns: auto auto 1fr;
+    grid-template-columns: auto auto minmax(0, 1fr);
     grid-template-areas:
       'desc desc desc'
+      'custodian custodian integrity'
       'code type date';
     align-items: center;
     gap: 8px 10px;
@@ -910,10 +1231,44 @@ svg {
     grid-area: type;
   }
 
+  .table__custodian {
+    grid-area: custodian;
+    color: var(--text-2);
+    font-size: 13px;
+  }
+
+  .table__integrity {
+    grid-area: integrity;
+    justify-self: end;
+  }
+
+  .filters,
+  .verify,
+  .anomalies {
+    padding-inline: 16px;
+  }
+
+  .pending {
+    margin-inline: 16px;
+  }
+
+  .timeline {
+    padding-inline: 16px;
+  }
+
+  .timeline__item {
+    grid-template-columns: 32px 1fr;
+  }
+
+  .timeline__item time {
+    grid-column: 2;
+  }
+
   .table__num {
     grid-area: date;
     justify-self: end;
     font-size: 12px;
+    white-space: normal;
   }
 
   .skeleton-row {

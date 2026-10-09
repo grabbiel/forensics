@@ -1,6 +1,7 @@
 import { data, redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from 'react-router'
 import { signIn } from '../../api/auth'
 import { ApiError } from '../../api/client'
+import { forgetPeople } from '../../api/people'
 import { safeRedirect } from '../../auth/guard'
 import { clearSession, getSession, saveSession } from '../../auth/session'
 
@@ -29,5 +30,6 @@ export async function loginAction({ request }: ActionFunctionArgs) {
 /** Forgets the token. */
 export function logoutAction() {
   clearSession()
+  forgetPeople()
   return redirect('/login')
 }
