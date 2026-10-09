@@ -1,3 +1,6 @@
+using EvidenceChain.Domain.Catalog;
+using EvidenceChain.Domain.People;
+
 namespace EvidenceChain.Domain.Custody;
 
 /// <summary>Transfer lifecycle: pending until the recipient accepts or rejects.</summary>
@@ -9,21 +12,15 @@ public enum TransferStatus
 }
 
 /// <summary>
-/// A request to hand an evidence from its current custodian to another Custodio.
-/// Requests and decisions each carry an idempotency key with a fingerprint of the request body.
+/// A request to hand an evidence from its current custodian to another Custodio. Every change goes through
+/// <see cref="TransferTransitions"/>; requests and decisions each carry an idempotency key and a body fingerprint.
 /// </summary>
 public sealed class CustodyTransfer
 {
-    public CustodyTransfer(
+    private CustodyTransfer(
         long evidenceId, int fromCustodianId, int toCustodianId, int requestedById, DateTime requestedAtUtc,
         string reason, Guid clientRequestId, byte[] requestFingerprint)
     {
-        if (fromCustodianId == toCustodianId)
-            throw new ArgumentException("A transfer needs a different recipient.", nameof(toCustodianId));
-        Utc.Require(requestedAtUtc, nameof(requestedAtUtc));
-        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
-        RequireFingerprint(requestFingerprint, nameof(requestFingerprint));
-
         EvidenceId = evidenceId;
         FromCustodianId = fromCustodianId;
         ToCustodianId = toCustodianId;
@@ -33,6 +30,32 @@ public sealed class CustodyTransfer
         ClientRequestId = clientRequestId;
         _requestFingerprint = requestFingerprint.ToArray();
         Status = TransferStatus.Pending;
+    }
+
+    /// <summary>
+    /// An Investigador asks the evidence's current custodian to hand it to <paramref name="recipient"/>, a different Custodio.
+    /// <paramref name="hasPendingTransfer"/> refuses a second open request (the database enforces it too).
+    /// </summary>
+    public static CustodyTransfer Request(
+        Evidence evidence, Actor requester, Actor recipient, bool hasPendingTransfer, DateTime requestedAtUtc,
+        string reason, Guid clientRequestId, byte[] requestFingerprint)
+    {
+        ArgumentNullException.ThrowIfNull(evidence);
+        var decision = TransferTransitions.Decide(hasPendingTransfer ? TransferStatus.Pending : null, TransferCommand.Request, requester.Role, isRecipient: false);
+        TransferRuleException.ThrowIfRefused(decision, TransferCommand.Request, requester.Role, transfer: null);
+
+        if (recipient.Role != UserRole.Custodio)
+            throw new ArgumentException("The recipient must be a Custodio.", nameof(recipient));
+        if (recipient.UserId == evidence.CurrentCustodianId)
+            throw new ArgumentException("The recipient already holds the evidence.", nameof(recipient));
+        if (recipient.UserId == requester.UserId)
+            throw new ArgumentException("A requester cannot send the evidence to themselves.", nameof(recipient));
+        Utc.Require(requestedAtUtc, nameof(requestedAtUtc));
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        RequireFingerprint(requestFingerprint, nameof(requestFingerprint));
+
+        return new CustodyTransfer(evidence.EvidenceId, evidence.CurrentCustodianId, recipient.UserId, requester.UserId,
+            requestedAtUtc, reason, clientRequestId, requestFingerprint);
     }
 
     // Required by EF Core for materialization.
@@ -77,30 +100,39 @@ public sealed class CustodyTransfer
     /// <summary>Optimistic concurrency token (rowversion), exposed as the ETag.</summary>
     public byte[] RowVersion { get; private set; } = [];
 
-    /// <summary>Accepts the transfer; only the pending recipient may.</summary>
-    public void Accept(int deciderId, DateTime decidedAtUtc, string? notes, Guid decisionKey, byte[] fingerprint) =>
-        Decide(TransferStatus.Accepted, deciderId, decidedAtUtc, notes, decisionKey, fingerprint);
-
-    /// <summary>Rejects the transfer with a reason; only the pending recipient may.</summary>
-    public void Reject(int deciderId, DateTime decidedAtUtc, string reason, Guid decisionKey, byte[] fingerprint)
+    /// <summary>The recipient accepts: custody passes to them on <paramref name="evidence"/> in the same step.</summary>
+    public void Accept(Evidence evidence, Actor decider, DateTime decidedAtUtc, string? notes, Guid decisionKey, byte[] fingerprint)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
-        Decide(TransferStatus.Rejected, deciderId, decidedAtUtc, reason, decisionKey, fingerprint);
+        Decide(TransferCommand.Accept, evidence, decider, decidedAtUtc, notes, decisionKey, fingerprint);
+        evidence.HandOverTo(ToCustodianId);
     }
 
-    private void Decide(TransferStatus outcome, int deciderId, DateTime decidedAtUtc, string? notes, Guid decisionKey, byte[] fingerprint)
+    /// <summary>The recipient rejects with a reason; custody stays where it was.</summary>
+    public void Reject(Evidence evidence, Actor decider, DateTime decidedAtUtc, string reason, Guid decisionKey, byte[] fingerprint)
     {
-        if (Status != TransferStatus.Pending)
-            throw new InvalidOperationException($"Transfer {TransferId} is already {Status}.");
-        if (deciderId != ToCustodianId)
-            throw new InvalidOperationException("Only the recipient can decide a transfer.");
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        Decide(TransferCommand.Reject, evidence, decider, decidedAtUtc, reason, decisionKey, fingerprint);
+    }
+
+    private void Decide(TransferCommand command, Evidence evidence, Actor decider, DateTime decidedAtUtc, string? notes, Guid decisionKey, byte[] fingerprint)
+    {
+        ArgumentNullException.ThrowIfNull(evidence);
+        if (evidence.EvidenceId != EvidenceId)
+            throw new ArgumentException($"Transfer {TransferId} belongs to another evidence.", nameof(evidence));
+
+        var decision = TransferTransitions.Decide(Status, command, decider.Role, isRecipient: decider.UserId == ToCustodianId);
+        TransferRuleException.ThrowIfRefused(decision, command, decider.Role, this);
+
+        // Custody only moves through accepted transfers, so it must still be where the request found it.
+        if (evidence.CurrentCustodianId != FromCustodianId)
+            throw new InvalidOperationException($"Evidence {evidence.Code} changed custodian after transfer {TransferId} was requested.");
         Utc.Require(decidedAtUtc, nameof(decidedAtUtc));
         if (decidedAtUtc < RequestedAtUtc)
             throw new ArgumentException("A decision cannot precede its request.", nameof(decidedAtUtc));
         RequireFingerprint(fingerprint, nameof(fingerprint));
 
-        Status = outcome;
-        DecidedById = deciderId;
+        Status = decision.Next!.Value;
+        DecidedById = decider.UserId;
         DecidedAtUtc = decidedAtUtc;
         DecisionNotes = notes?.Trim();
         DecisionKey = decisionKey;

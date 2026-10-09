@@ -97,13 +97,13 @@ public sealed class SchemaTests(ApiFactory factory)
 
         await using (var second = await OpenAsync())
         {
-            second.CustodyTransfers.Add(NewTransfer(evidence.EvidenceId));
+            second.CustodyTransfers.Add(NewTransfer(evidence));
             Assert.Equal(2601, await SqlErrorAsync(() => second.SaveChangesAsync(Token)));
         }
 
-        first.Accept(OtherCustodian, Registered.AddHours(3), "Recibida", Guid.CreateVersion7(), Mac());
+        first.Accept(evidence, new Actor(OtherCustodian, UserRole.Custodio), Registered.AddHours(3), "Recibida", Guid.CreateVersion7(), Mac());
         await db.SaveChangesAsync(Token);
-        var next = NewTransfer(evidence.EvidenceId); // allowed once the first is decided
+        var next = NewTransfer(evidence, to: Custodian); // allowed once the first is decided; custody moved to OtherCustodian
         db.CustodyTransfers.Add(next);
         await db.SaveChangesAsync(Token);
         Assert.Equal("Pending", await ScalarAsync<string>(db, $"SELECT Status AS Value FROM dbo.CustodyTransfers WHERE TransferId = {next.TransferId}"));
@@ -122,7 +122,7 @@ public sealed class SchemaTests(ApiFactory factory)
             """, Token)));
 
         await using var replay = await OpenAsync();
-        var duplicate = new CustodyTransfer(evidence.EvidenceId, Custodian, OtherCustodian, Investigator, Registered.AddHours(1), "Otra", transfer.ClientRequestId, Mac());
+        var duplicate = NewTransfer(evidence, key: transfer.ClientRequestId);
         replay.CustodyTransfers.Add(duplicate);
         Assert.Equal(2601, await SqlErrorAsync(() => replay.SaveChangesAsync(Token)));
     }
@@ -231,12 +231,14 @@ public sealed class SchemaTests(ApiFactory factory)
         return genesis;
     }
 
-    private static CustodyTransfer NewTransfer(long evidenceId) =>
-        new(evidenceId, Custodian, OtherCustodian, Investigator, Registered.AddHours(1), "Análisis en laboratorio", Guid.CreateVersion7(), Mac());
+    /// <summary>A request from the evidence's current custodian; pending checks are left to the database here.</summary>
+    private static CustodyTransfer NewTransfer(Evidence evidence, int to = OtherCustodian, Guid? key = null) =>
+        CustodyTransfer.Request(evidence, new Actor(Investigator, UserRole.Investigador), new Actor(to, UserRole.Custodio), hasPendingTransfer: false,
+            Registered.AddHours(1), "Análisis en laboratorio", key ?? Guid.CreateVersion7(), Mac());
 
     private static async Task<CustodyTransfer> AddTransferAsync(AppDbContext db, Evidence evidence)
     {
-        var transfer = NewTransfer(evidence.EvidenceId);
+        var transfer = NewTransfer(evidence);
         db.CustodyTransfers.Add(transfer);
         await db.SaveChangesAsync(Token);
         return transfer;
