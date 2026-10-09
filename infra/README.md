@@ -71,6 +71,12 @@ Approximate cost while running: **≈ $43/month** at US list prices (B1 ≈ $12.
    azd provision
    ```
 
+## Upgrading an existing deployment
+
+Steps 4 and 6 again, in the order the migration needs:
+- **It adds what the new API reads:** run step 4 (migrations) first, then `azd deploy api`.
+- **It removes what the running API still reads:** `azd deploy api` first, then step 4. `DropUnusedIndexesAndInboxColumns` is one: run it before the deploy and every custody write fails until the new API is live.
+
 ## Teardown
 
 `azd down --purge` deletes the resource group and purges the Key Vault, so its name can be reused at once.

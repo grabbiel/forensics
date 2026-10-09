@@ -40,19 +40,42 @@ namespace EvidenceChain.Infrastructure.Persistence.Migrations
                 name: "IX_CustodyTransfers_ToCustodianId",
                 table: "CustodyTransfers");
 
+            // Added nullable, filled from Evidence, then made required: the columns come back with their values and
+            // without the default constraints a required AddColumn would leave behind.
             migrationBuilder.AddColumn<DateOnly>(
                 name: "CodeDateUtc",
                 table: "EvidenceInbox",
                 type: "date",
-                nullable: false,
-                defaultValue: new DateOnly(1, 1, 1));
+                nullable: true);
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "RegisteredAtUtc",
                 table: "EvidenceInbox",
                 type: "datetime2",
+                nullable: true);
+
+            migrationBuilder.Sql("""
+                UPDATE i SET CodeDateUtc = e.CodeDateUtc, RegisteredAtUtc = e.RegisteredAtUtc
+                FROM dbo.EvidenceInbox AS i JOIN dbo.Evidence AS e ON e.EvidenceId = i.EvidenceId;
+                """);
+
+            migrationBuilder.AlterColumn<DateOnly>(
+                name: "CodeDateUtc",
+                table: "EvidenceInbox",
+                type: "date",
                 nullable: false,
-                defaultValue: new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified));
+                oldClrType: typeof(DateOnly),
+                oldType: "date",
+                oldNullable: true);
+
+            migrationBuilder.AlterColumn<DateTime>(
+                name: "RegisteredAtUtc",
+                table: "EvidenceInbox",
+                type: "datetime2",
+                nullable: false,
+                oldClrType: typeof(DateTime),
+                oldType: "datetime2",
+                oldNullable: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Evidence_Recent",
