@@ -3,7 +3,7 @@
 The evaluated deliverable is `docker compose up --build`. This folder deploys the same API to Azure:
 App Service (Linux B1, .NET 10) → Azure SQL (S1, Entra-only auth) with Key Vault, Log Analytics and Application Insights, in one resource group per azd environment. The SPA is deployed separately on Vercel.
 
-Approximate cost while running: **≈ $45/month** at US list prices (B1 ≈ $12.41, S1 ≈ $29.43, the rest ≈ $1). `azd down --purge` removes everything.
+Approximate cost while running: **≈ $43/month** at US list prices (B1 ≈ $12.41, S1 ≈ $29.43, the rest ≈ $1). `azd down --purge` removes everything.
 
 ## Prerequisites
 
@@ -58,7 +58,7 @@ Approximate cost while running: **≈ $45/month** at US list prices (B1 ≈ $12.
 
    `--reset` replaces everything in the database. The seed is anchored to today, so seed within a day of a demo: only the overdue fixture is then overdue.
 
-6. **Deploy the API:** `azd deploy api`. Check `$(azd env get-value SERVICE_API_URI)/api/v1/health/live`, then `/api/v1/evidence` with a token.
+6. **Deploy the API:** `azd deploy api`. Check `$(azd env get-value SERVICE_API_URI)/api/v1/health/live`, then `/api/v1/evidence` with a token from `POST /api/v1/auth/token` (body `{"userName": "supervisor.demo"}`).
 
 7. **Deploy the SPA on Vercel.** Import the repository and leave Root Directory at the repository root; the root `vercel.json` builds `frontend/`.
    - Set `VITE_API_BASE_URL` to the `SERVICE_API_URI` value.
@@ -88,8 +88,6 @@ Approximate cost while running: **≈ $45/month** at US list prices (B1 ≈ $12.
 | `BUDGET_ALERT_EMAIL` | empty | Enables a $60 monthly budget (`budgetAmount` in `main.bicep`) with 80% actual and 100% forecast alerts. |
 
 ## Troubleshooting
-
-- **The custody migration stops with "Evidence holds tracer rows".** The database holds rows from before the custody schema. Empty `dbo.Evidence`, run step 4 again, then step 5.
 
 - **`ProvisioningDisabled: Provisioning is restricted in this region`** for the SQL server. Some subscriptions can't create Azure SQL servers in busy regions; on this project's subscription, East US 2, East US and North Central US were blocked. Pick a region that allows it (this deployment uses Central US), then run `azd down --purge`, `azd env set AZURE_LOCATION <region>` and `azd provision`.
 - **`CREATE USER … FROM EXTERNAL PROVIDER` fails in step 4.** The SQL admin must be able to read the directory. A guest or Microsoft-account admin needs a directory role (for example, the subscription creator's Global Administrator).

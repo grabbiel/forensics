@@ -1,6 +1,7 @@
 # Reproducible local stack: SQL Server 2025 -> one-shot migrate/seed -> API -> SPA.
 # Dev-only credentials (marked DevOnly); override them in .env, see .env.example.
-# Another SQL Server: set ADMIN_CONNECTION and APP_CONNECTION, then `docker compose up --build --no-deps migrate api web`.
+# Another SQL Server 2025 instance (not Azure SQL): set ADMIN_CONNECTION and APP_CONNECTION in .env, then
+# `docker compose up --build --no-deps migrate api web`.
 name: evidence-chain
 
 services:
