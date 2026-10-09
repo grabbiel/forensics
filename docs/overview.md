@@ -25,14 +25,19 @@ The API tests run against real SQL Server, with no fakes. The two journeys run a
 | Idempotency | `TransferCustodyTests` | The same key and body sent 8 times in parallel make one transfer, and every answer is 201 with its id. The same key with another body is 422. A retry spelled differently still replays. Decisions replay too, even when retried in parallel. |
 | Concurrency conflict | `TransferCustodyTests` | Two parallel accepts with one `If-Match` give one 200 and one 409 with `currentState.status = "Accepted"`, who acted, when, and the current ETag. Bursts of duplicates and competing decisions never fail and leave every chain valid. |
 | Gap-free codes | `DailyIndexAllocatorTests` | 55 parallel registrations on one type and day, 5 of them abandoned after taking a number, commit exactly codes 1 to 50. |
+| Stale response | `journeys.test.tsx` | Filter A's answer is held back while filter B's arrives. The inbox shows B, and still shows B once A's answer comes in. |
+| 409 rollback | `journeys.test.tsx` | Another tab rejected the transfer, so accepting it gets a 409 with `currentState`. The card shows it as the server left it ("Rechazada"), never "Aceptada", and the custodian is unchanged; the alert says who acted and when, and takes focus. |
+| Same key on retry | `journeys.test.tsx` | The first request fails at the network. The retry, and the same request made again after a reload, carry the same `Idempotency-Key`. |
+| Modal keyboard | `journeys.test.tsx` | The request and reject dialogs open on Enter with focus on the first field, keep Tab inside, close on Escape and return focus to their button. |
 
-The frontend items, a stale search response that must not replace the current filter and the 409 rollback, arrive with the transfer UI.
+The frontend rows run the real router, `fetch` and API client against [MSW](https://mswjs.io), so headers are checked as sent.
 
 ### Also covered
 
 - **Domain:** every state × command × role combination of the transfer state machine; the overdue rule's boundaries and severity; the canonical encoding pinned by a golden MAC.
 - **Data:** the seed (identical loads matching `manifest.reference.csv`, all-or-nothing reruns); schema rules enforced by SQL Server; the app login's column-level permissions.
 - **API:** sign-in and rejected tokens (wrong key, expired, `alg: none`); role and recipient policies; problem details for every client-facing error; `Idempotency-Key` and `If-Match` rules; inbox paging and filters; the published `openapi.yaml` matching the running API.
+- **Web:** sign-in, session expiry and the route guards; inbox filters, sort, pages and stale cursors; verification outcomes, including a missing event; each transfer state (sending, done, refused, unknown) and pending-intent keys.
 
 ### Not tested, and why
 
