@@ -5,7 +5,7 @@ import { signedIn } from '../../auth/guard'
 import { clearIntent, intentScope } from './pendingIntent'
 
 /** How long a write may take before its outcome counts as unknown. */
-export const WRITE_TIMEOUT_MS = 15_000
+const WRITE_TIMEOUT_MS = 15_000
 
 export const PROBLEM = {
   inFlight: 'urn:evidence-chain:problem:idempotency-in-flight',
@@ -13,7 +13,7 @@ export const PROBLEM = {
   staleVersion: 'urn:evidence-chain:problem:stale-version',
 } as const
 
-export type WriteKind = 'request' | Decision
+type WriteKind = 'request' | Decision
 
 /**
  * What a transfer action answers, naming the write it was. Never thrown, so the page stays mounted and can explain it:
