@@ -44,6 +44,23 @@ export function AppShell() {
   )
 }
 
+/** Skeleton of a detail page: heading, facts, timeline. */
+export function DetailLoading() {
+  return (
+    <section className="panel" aria-busy="true" aria-label="Cargando evidencia">
+      <div className="panel__head">
+        <span className="skeleton" style={{ width: 200, height: 20 }} />
+      </div>
+      <div className="skeleton-rows" role="status">
+        <span className="visually-hidden">Cargando evidencia…</span>
+        {Array.from({ length: 4 }, (_, i) => (
+          <span key={i} className="skeleton" style={{ width: `${88 - i * 12}%` }} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
 /** Skeleton in the shape of the inbox, shown while the first load runs. */
 export function PageLoading() {
   return (

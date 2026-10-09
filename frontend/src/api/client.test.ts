@@ -26,8 +26,10 @@ describe('api client', () => {
     expect((problem as ApiError).problem?.detail).toBe('nope')
 
     vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => new Response('<html>gateway</html>', { status: 502, headers: { 'Content-Type': 'text/html' } })))
-    const gateway = await getJson('/x').catch((error: ApiError) => error)
-    expect(((gateway as ApiError).status, (gateway as ApiError).problem)).toBeUndefined()
+    const gateway = await getJson('/x').catch((error: unknown) => error)
+    expect(gateway).toBeInstanceOf(ApiError)
+    expect((gateway as ApiError).status).toBe(502)
+    expect((gateway as ApiError).problem).toBeUndefined()
   })
 
   it('sends writes once with their headers and never retries a 409', async () => {

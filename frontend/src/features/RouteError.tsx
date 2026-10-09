@@ -2,12 +2,20 @@ import { useEffect, useRef } from 'react'
 import { isRouteErrorResponse, Link, useRevalidator, useRouteError } from 'react-router'
 import { ApiError } from '../api/client'
 
-/** Route error boundary: shows the API's problem details and offers a retry. */
-export function RouteError() {
+/** What a route calls a 404, e.g. a missing evidence; other routes say the page is not there. */
+export interface NotFoundText {
+  title: string
+  detail: string
+}
+
+const PAGE_NOT_FOUND: NotFoundText = { title: 'No encontrada', detail: 'Lo que buscas no existe o ya no está disponible.' }
+
+/** Route error boundary: explains the failure and offers a retry when one can help. */
+export function RouteError({ notFound = PAGE_NOT_FOUND }: { notFound?: NotFoundText }) {
   const error = useRouteError()
   const revalidator = useRevalidator()
   const retrying = revalidator.state === 'loading'
-  const { title, detail, retry } = describe(error)
+  const { title, detail, retry } = describe(error, notFound)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const wasRetrying = useRef(false)
 
@@ -41,10 +49,8 @@ export function RouteError() {
  * Turns any thrown value into Spanish text, never the API's own (English) detail. Retrying only helps when the
  * failure may pass; a missing evidence or a refused role gets a way back instead.
  */
-function describe(error: unknown): { title: string; detail: string; retry: boolean } {
-  if (error instanceof ApiError && error.status === 404) {
-    return { title: 'Evidencia no encontrada', detail: 'No existe ninguna evidencia con ese código.', retry: false }
-  }
+function describe(error: unknown, notFound: NotFoundText): { title: string; detail: string; retry: boolean } {
+  if (error instanceof ApiError && error.status === 404) return { ...notFound, retry: false }
   if (error instanceof ApiError && error.status === 403) {
     return { title: 'Sin permiso', detail: 'Tu rol no permite ver esto.', retry: false }
   }

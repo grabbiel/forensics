@@ -42,7 +42,7 @@ describe('transfer actions', () => {
     expect(init?.headers).toMatchObject({ 'Idempotency-Key': 'key-1' })
   })
 
-  it('answers a refusal with the problem and its status, so the router does not revalidate', async () => {
+  it('answers a refusal with the problem and its status', async () => {
     signInAs('Investigador')
     const problem = { status: 409, type: 'urn:evidence-chain:problem:invalid-transition', currentState: { status: 'Pending' } }
     vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => reply(409, problem, 'application/problem+json')))

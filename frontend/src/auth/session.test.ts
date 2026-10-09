@@ -32,6 +32,12 @@ describe('session', () => {
     expect(sessionStorage.length).toBe(0)
   })
 
+  it('treats a missing or malformed expiry as expired', async () => {
+    const { saveSession, getSession } = await reload()
+    saveSession({ ...session(3_600_000), expiresAtUtc: 'not a date' })
+    expect(getSession()).toBeNull()
+  })
+
   it('keeps working in memory when storage is blocked', async () => {
     const { saveSession, getSession, clearSession } = await reload()
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {

@@ -27,5 +27,5 @@ export function verifyLoader({ request, params }: LoaderFunctionArgs): Promise<V
       if (error instanceof ApiError) throw error
       return { ok: false, status: 0 } // no answer
     }
-  })
+  }, `/evidence/${encodeURIComponent(params.id!)}`)
 }

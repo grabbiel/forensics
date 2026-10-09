@@ -19,13 +19,15 @@ const STORAGE_KEY = 'evidence-chain:session'
 // A token this close to expiry is treated as gone, so a request never starts with one about to lapse.
 const EXPIRY_MARGIN_MS = 60_000
 
-// Memory is the source of truth; sessionStorage only lets a reload keep the session (never another tab or window).
+// Memory is the source of truth; sessionStorage lets a reload keep the session. Tabs opened normally start signed
+// out; a duplicated tab gets a copy, as browsers copy sessionStorage when duplicating.
 let cached: Session | null | undefined
 
 /** The current session, or null when signed out or expired. */
 export function getSession(now = Date.now()): Session | null {
   if (cached === undefined) cached = read()
-  if (cached && Date.parse(cached.expiresAtUtc) - EXPIRY_MARGIN_MS <= now) clearSession()
+  // Written so a missing or malformed expiry (NaN) also counts as expired.
+  if (cached && !(Date.parse(cached.expiresAtUtc) - EXPIRY_MARGIN_MS > now)) clearSession()
   return cached ?? null
 }
 

@@ -1,5 +1,6 @@
 import { ArrowRight, LinkSimple, SealCheck, ShieldCheck, UserCircle } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
+import type { FormEvent } from 'react'
 import { Form, useActionData, useNavigation, useSearchParams } from 'react-router'
 import type { Role } from '../../auth/session'
 import type { loginAction } from './loginRoute'
@@ -15,7 +16,11 @@ const DEMO_USERS: { userName: string; displayName: string; role: Role; can: stri
 export function LoginPage() {
   const result = useActionData<typeof loginAction>()
   const navigation = useNavigation()
-  const pendingUser = navigation.state === 'submitting' ? String(navigation.formData?.get('userName') ?? '') : null
+  // Busy from the submission until the page it leads to has loaded, not only while the token is requested.
+  const busy = navigation.state !== 'idle' && (navigation.formAction?.startsWith('/login') ?? false)
+  const pendingUser = busy ? String(navigation.formData?.get('userName') ?? '') : null
+  // aria-disabled keeps focus on the pressed button; this keeps it from submitting again meanwhile.
+  const holdWhileBusy = (event: FormEvent<HTMLFormElement>) => busy && event.preventDefault()
   const [searchParams] = useSearchParams()
   const action = searchParams.size > 0 ? `/login?${searchParams}` : '/login'
 
@@ -43,9 +48,9 @@ export function LoginPage() {
         <ul className="personas">
           {DEMO_USERS.map(({ userName, displayName, role, can, icon: PersonaIcon }) => (
             <li key={userName}>
-              <Form method="post" action={action}>
+              <Form method="post" action={action} onSubmit={holdWhileBusy}>
                 <input type="hidden" name="userName" value={userName} />
-                <button type="submit" className="persona" aria-disabled={pendingUser !== null} disabled={pendingUser !== null && pendingUser !== userName}>
+                <button type="submit" className="persona" aria-disabled={busy} disabled={busy && pendingUser !== userName}>
                   <PersonaIcon size={28} aria-hidden="true" />
                   <span className="persona__text">
                     <span className="persona__name">{displayName}</span>
@@ -60,11 +65,11 @@ export function LoginPage() {
           ))}
         </ul>
 
-        <Form method="post" action={action} className="login__other">
+        <Form method="post" action={action} className="login__other" onSubmit={holdWhileBusy}>
           <label htmlFor="other-user">Otra persona del equipo</label>
           <div className="login__other-row">
             <input id="other-user" name="userName" className="field" placeholder="p. ej. nuria.paredes" autoComplete="username" spellCheck={false} required />
-            <button type="submit" className="button button--ghost" aria-disabled={pendingUser !== null}>
+            <button type="submit" className="button button--ghost" aria-disabled={busy}>
               Entrar
             </button>
           </div>

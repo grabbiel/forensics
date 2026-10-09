@@ -1,6 +1,6 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { createMemoryRouter } from 'react-router'
+import { createMemoryRouter, useFetcher, useParams, type RouteObject } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
 import { describe, expect, it, vi } from 'vitest'
 import type { EvidenceChain, EvidenceDetail } from './api/evidence'
@@ -8,6 +8,30 @@ import { safeRedirect } from './auth/guard'
 import { getSession } from './auth/session'
 import { routes } from './routes'
 import { DEMO, signInAs } from './test/session'
+
+const route = (path: string) => routes.find((r) => r.path === path)!
+const evidenceRoute = routes.find((r) => r.path === '/')!.children!.find((r) => r.path === 'evidence/:id')!
+
+/** The real verify, transfer, login and evidence-loader routes, with a page that drives their fetchers. */
+function harness(): RouteObject[] {
+  function Probe() {
+    const { id } = useParams()
+    const verify = useFetcher()
+    const write = useFetcher()
+    return (
+      <>
+        <button type="button" onClick={() => verify.load(`/evidence/${id}/verify`)}>
+          verificar
+        </button>
+        <button type="button" onClick={() => write.submit({ toCustodianId: '5', reason: 'x', idempotencyKey: 'k' }, { method: 'post', action: `/evidence/${id}/transfer` })}>
+          enviar
+        </button>
+        <output>{write.state === 'idle' && write.data ? (write.data as { outcome: string }).outcome : ''}</output>
+      </>
+    )
+  }
+  return [route('/login'), route('/evidence/:id/verify'), route('/evidence/:id/transfer'), { ...evidenceRoute, path: '/evidence/:id', element: <Probe />, errorElement: undefined }]
+}
 
 const person = (id: number, displayName: string) => ({ id, displayName })
 const detail: EvidenceDetail = {
@@ -120,8 +144,89 @@ describe('routes and sign-in', () => {
     expect(within(alert).getByRole('link', { name: 'Ir a la bandeja' })).toHaveAttribute('href', '/')
   })
 
-  it('only follows same-site paths after sign-in', () => {
+  it('only follows pages of this site after sign-in', () => {
     expect(safeRedirect('/evidence/LOG1?x=1')).toBe('/evidence/LOG1?x=1')
-    for (const target of [null, '', 'https://evil.example', '//evil.example', '/\\evil.example']) expect(safeRedirect(target)).toBe('/')
+    expect(safeRedirect('/?q=vpn')).toBe('/?q=vpn')
+    const refused = [null, '', 'https://evil.example', '//evil.example', '/\\evil.example', '/login', '/logout', '/evidence/LOG1/verify', '/transfers/7/accept']
+    for (const target of refused) expect(safeRedirect(target)).toBe('/')
+  })
+
+  it('never loops through /login, even when told to return there', async () => {
+    signInAs('Investigador')
+    fakeApi()
+    const router = renderAt('/login?redirectTo=%2Flogin')
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+  })
+
+  it('keeps the chosen persona busy, and does not sign in twice, until the next page has loaded', async () => {
+    let release: () => void = () => {}
+    const fetchMock = fakeApi()
+    const inboxReady = new Promise<void>((resolve) => (release = resolve))
+    const base = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation(async (input, init) => {
+      if (String(input).startsWith('/api/v1/evidence')) await inboxReady
+      return base(input, init)
+    })
+    renderAt('/login')
+
+    const persona = await screen.findByRole('button', { name: /Diego Salas/ })
+    await userEvent.click(persona)
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/v1/evidence'))).toBe(true))
+
+    expect(persona).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('button', { name: /Lucía Ferrer/ })).toBeDisabled()
+    await userEvent.click(persona)
+    expect(fetchMock.mock.calls.filter(([url]) => String(url) === '/api/v1/auth/token')).toHaveLength(1)
+
+    await act(async () => release())
+    expect(await screen.findByRole('heading', { name: 'Bandeja de evidencias' })).toBeInTheDocument()
+  })
+
+  it('guards pages without data too, so a signed-out visitor never sees the app frame', async () => {
+    fakeApi()
+    const router = renderAt('/no/existe')
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+  })
+})
+
+describe('resource routes', () => {
+  it('returns a fetcher whose token was refused to the page it was used from, not to the resource route', async () => {
+    signInAs('Supervisor')
+    fakeApi((url) => (url.endsWith('/chain/verify') ? json(401, { status: 401 }, 'application/problem+json') : undefined))
+    const router = createMemoryRouter(harness(), { initialEntries: [`/evidence/${detail.code}`] })
+    render(<RouterProvider router={router} />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'verificar' }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+    expect(router.state.location.search).toBe(`?redirectTo=${encodeURIComponent(`/evidence/${detail.code}`)}`)
+  })
+
+  it('re-reads the evidence after a write that succeeded, was refused with 409 or got no answer, never re-running a verification', async () => {
+    signInAs('Investigador')
+    const answers = [201, 409, 503, 422]
+    const fetchMock = fakeApi((url) => {
+      if (url.endsWith('/chain/verify')) return json(200, { code: detail.code, valid: true, verifiedThroughSeq: 1, eventCount: 1, checkedAtUtc: '2026-10-09T00:00:00Z', firstInvalid: null })
+      if (url !== '/api/v1/custody-transfers') return undefined
+      const status = answers.shift()!
+      if (status === 503) throw new TypeError('Failed to fetch')
+      return status === 201 ? json(201, { transferId: 9, status: 'Pending', etag: '"01"' }) : json(status, { status }, 'application/problem+json')
+    })
+    const calls = (suffix: string) => fetchMock.mock.calls.filter(([url]) => String(url) === `/api/v1/evidence/${detail.code}${suffix}`).length
+    render(<RouterProvider router={createMemoryRouter(harness(), { initialEntries: [`/evidence/${detail.code}`] })} />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'verificar' }))
+    await waitFor(() => expect(calls('/chain/verify')).toBe(1))
+    expect(calls('')).toBe(1)
+
+    for (const [outcome, reads] of [['done', 2], ['refused', 3], ['unknown', 4], ['refused', 4]] as const) {
+      await userEvent.click(screen.getByRole('button', { name: 'enviar' }))
+      await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(outcome))
+      await waitFor(() => expect(calls('')).toBe(reads))
+      expect(calls('/chain/verify')).toBe(1)
+      await act(async () => {}) // let any revalidation settle before the next write
+    }
   })
 })
