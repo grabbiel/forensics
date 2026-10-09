@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using EvidenceChain.Api.Inbox;
 using EvidenceChain.Application.Inbox;
+using EvidenceChain.Application.Integrity;
 using EvidenceChain.Application.Review;
 using EvidenceChain.Domain.Catalog;
 using EvidenceChain.Domain.Custody;
@@ -13,7 +14,7 @@ namespace EvidenceChain.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/v1/evidence")]
-public sealed class EvidenceController(IEvidenceInboxQuery inbox, IEvidenceQueries evidence) : ControllerBase
+public sealed class EvidenceController(IEvidenceInboxQuery inbox, IEvidenceQueries evidence, ChainVerificationService verification) : ControllerBase
 {
     private const string NewestFirst = "lastEventAt:desc";
     private const string OldestFirst = "lastEventAt:asc";
@@ -77,6 +78,19 @@ public sealed class EvidenceController(IEvidenceInboxQuery inbox, IEvidenceQueri
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound, "application/problem+json")]
     public async Task<ActionResult<EvidenceChainView>> Chain(string id, CancellationToken cancellationToken) =>
         await evidence.GetChainAsync(Normalize(id), cancellationToken) is { } chain ? Ok(chain) : NotFoundProblem(id);
+
+    /// <summary>Verifies the chain now: whether it is intact and, if not, the first invalid event and why.</summary>
+    /// <remarks>
+    /// Recomputes every MAC, checks the content against the hash committed at registration and the stored rows against
+    /// the signed events. The result is recorded as the evidence's integrity status unless the chain grew meanwhile.
+    /// </remarks>
+    /// <param name="id">The evidence code, e.g. LOG202609110007.</param>
+    /// <param name="cancellationToken">Aborted when the client cancels.</param>
+    [HttpGet("{id}/chain/verify")]
+    [ProducesResponseType<VerificationReport>(StatusCodes.Status200OK, "application/json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound, "application/problem+json")]
+    public async Task<ActionResult<VerificationReport>> Verify(string id, CancellationToken cancellationToken) =>
+        await verification.VerifyAsync(Normalize(id), cancellationToken) is { } report ? Ok(report) : NotFoundProblem(id);
 
     /// <summary>Codes are upper-case under a binary collation.</summary>
     private static string Normalize(string id) => id.Trim().ToUpperInvariant();

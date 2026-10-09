@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using EvidenceChain.Api.Auth;
 using EvidenceChain.Api.Http;
+using EvidenceChain.Api.Integrity;
 using EvidenceChain.Api.OpenApi;
 using EvidenceChain.Api.Problems;
 using EvidenceChain.Api.Security;
@@ -38,6 +39,7 @@ builder.Services.AddHealthChecks(); // liveness only: must never touch SQL (keep
 builder.Services.AddInfrastructure(connectionString);
 builder.Services.AddEvidenceChainAuth();
 builder.Services.AddEvidenceChainTelemetry(builder.Configuration);
+builder.Services.AddEvidenceReview();
 
 // Anomaly rules read the deadline from configuration and the time from an injectable clock.
 builder.Services.AddSingleton(TimeProvider.System);

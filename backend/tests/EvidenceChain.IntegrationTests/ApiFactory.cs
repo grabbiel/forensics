@@ -111,10 +111,13 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         SqlConnection.ClearAllPools();
     }
 
-    /// <summary>Points the API at the container (or at an unused address when Docker is missing).</summary>
-    protected override void ConfigureWebHost(IWebHostBuilder builder) =>
+    /// <summary>Points the API at the container (or at an unused address when Docker is missing); no background sweeps.</summary>
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
         builder.UseSetting("ConnectionStrings:Default",
             ConnectionString ?? "Server=127.0.0.1,1;Database=Unused;User Id=x;Password=x;Encrypt=False;Connect Timeout=1");
+        builder.UseSetting("Integrity:Sweep:Enabled", "false");
+    }
 
     /// <summary>Stops the host, then the container.</summary>
     public override async ValueTask DisposeAsync()
