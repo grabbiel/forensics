@@ -44,6 +44,7 @@ internal static class OpenApiDocumentSetup
                 operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference(BearerScheme, context.Document)] = [] }];
 
             PublishAllowedValues(operation, context);
+            DeclareResponseHeaders(operation, metadata);
 
             if (metadata.OfType<RequireIdempotencyKeyAttribute>().Any())
                 AddHeader(operation, RequireIdempotencyKeyAttribute.Header, "uuid",
@@ -67,6 +68,27 @@ internal static class OpenApiDocumentSetup
                 continue;
             schema.Enum = allowed.Values.OfType<string>().Select(v => (JsonNode)JsonValue.Create(v)).ToList();
         }
+    }
+
+    /// <summary>The headers a success carries: ETag, the replay flag on idempotent writes, and Location on 201.</summary>
+    private static void DeclareResponseHeaders(OpenApiOperation operation, IList<object> metadata)
+    {
+        var etag = metadata.OfType<ReturnsETagAttribute>().Any();
+        var replayable = metadata.OfType<RequireIdempotencyKeyAttribute>().Any();
+        foreach (var (status, response) in operation.Responses ?? [])
+        {
+            if (!status.StartsWith('2') || response is not OpenApiResponse success)
+                continue;
+            success.Headers ??= new Dictionary<string, IOpenApiHeader>();
+            if (etag)
+                success.Headers["ETag"] = Header("The resource's version; send it back as If-Match.");
+            if (replayable)
+                success.Headers["Idempotent-Replayed"] = Header("\"true\" when this answers an earlier request with the same Idempotency-Key.");
+            if (status == "201")
+                success.Headers["Location"] = Header("Where the created resource can be read.");
+        }
+
+        static OpenApiHeader Header(string description) => new() { Description = description, Schema = new OpenApiSchema { Type = JsonSchemaType.String } };
     }
 
     private static void AddHeader(OpenApiOperation operation, string name, string? format, string description)

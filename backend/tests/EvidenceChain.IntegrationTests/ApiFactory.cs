@@ -33,7 +33,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     private const string AppPassword = "DevOnly_TestPassw0rd!2026";
     private MsSqlContainer? _sql;
     private WebApplicationFactory<Program>? _probes;
-    private Task<WebApplicationFactory<Program>>? _reference;
+    private readonly Dictionary<string, Task<WebApplicationFactory<Program>>> _seeded = [];
 
     /// <summary>sa connection to the test database, or null when Docker is unavailable.</summary>
     public string? AdminConnectionString { get; private set; }
@@ -44,20 +44,27 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     /// <summary>Why database tests are skipped, if they are.</summary>
     public string? SkipReason { get; private set; }
 
+    /// <summary>The reference API for reading: tests may record verifications in it but write nothing else.</summary>
+    public Task<WebApplicationFactory<Program>> ReferenceApiAsync() => SeededApiAsync("EvidenceChainReference");
+
     /// <summary>
-    /// The API over its own database holding the reference dataset, signed with <see cref="ReferenceData.Keys"/>, with the
-    /// overdue rule's clock at the dataset's anchor so anomalies read as the fixtures describe them (tokens keep real time).
-    /// It connects as the least-privilege app login, as in compose. Loaded once; tests may record verifications in it but
-    /// write nothing else.
+    /// The API over a database of its own holding the reference dataset, signed with <see cref="ReferenceData.Keys"/>, with
+    /// the overdue rule's clock at the dataset's anchor so anomalies read as the fixtures describe them (tokens keep real
+    /// time). It connects as the least-privilege app login, as in compose. Loaded once per database name.
     /// </summary>
-    public Task<WebApplicationFactory<Program>> ReferenceApiAsync()
+    public Task<WebApplicationFactory<Program>> SeededApiAsync(string database)
     {
         Assert.SkipWhen(SkipReason is not null, SkipReason ?? "");
-        return _reference ??= LoadAsync();
+        lock (_seeded)
+        {
+            if (!_seeded.TryGetValue(database, out var api))
+                _seeded[database] = api = LoadAsync();
+            return api;
+        }
 
         async Task<WebApplicationFactory<Program>> LoadAsync()
         {
-            var admin = await CreateDatabaseAsync("EvidenceChainReference");
+            var admin = await CreateDatabaseAsync(database);
             await DatasetLoader.SeedAsync(admin, ReferenceData.Dataset.Value, ReferenceData.Keys, SeedMode.Strict, "seed", CancellationToken.None);
             await PrepareAsync(admin, CancellationToken.None);
             var app = new SqlConnectionStringBuilder(admin) { UserID = AppLogin, Password = AppPassword }.ConnectionString;
@@ -159,8 +166,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     {
         if (_probes is not null)
             await _probes.DisposeAsync();
-        if (_reference is { IsCompletedSuccessfully: true })
-            await _reference.Result.DisposeAsync();
+        foreach (var api in _seeded.Values.Where(t => t.IsCompletedSuccessfully))
+            await api.Result.DisposeAsync();
         await base.DisposeAsync();
         if (_sql is not null)
             await _sql.DisposeAsync();

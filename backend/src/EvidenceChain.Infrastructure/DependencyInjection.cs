@@ -1,7 +1,9 @@
+using EvidenceChain.Application.Custody;
 using EvidenceChain.Application.Inbox;
 using EvidenceChain.Application.Integrity;
 using EvidenceChain.Application.People;
 using EvidenceChain.Application.Review;
+using EvidenceChain.Infrastructure.Custody;
 using EvidenceChain.Infrastructure.Inbox;
 using EvidenceChain.Infrastructure.Integrity;
 using EvidenceChain.Infrastructure.People;
@@ -24,6 +26,7 @@ public static class DependencyInjection
         services.AddScoped<IUserDirectory, UserDirectory>();
         services.AddScoped<IEvidenceQueries, EvidenceQueries>();
         services.AddScoped<IChainVerificationStore, ChainVerificationStore>();
+        services.AddScoped<ICustodyTransfers, CustodyTransferService>();
         return services;
     }
 }

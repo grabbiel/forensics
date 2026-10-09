@@ -55,15 +55,24 @@ internal static class DatabasePreparation
             SET @sql = N'ALTER ROLE db_datareader ADD MEMBER ' + @quotedLogin;
             EXEC sys.sp_executesql @sql;
 
-            -- Verification records its verdict, and only that, in the inbox projection.
-            SET @sql = N'GRANT UPDATE ON dbo.EvidenceInbox (IntegrityStatus, IntegrityCheckedAtUtc, IntegrityCheckedThroughSeq) TO ' + @quotedLogin;
+            -- Exactly the writes custody needs, by column: requests insert a transfer and decisions fill in its decision;
+            -- events are appended; the evidence's head and holder follow them; the inbox projection follows every write
+            -- and records verification verdicts.
+            SET @sql = REPLACE(N'
+                GRANT INSERT ON dbo.CustodyTransfers TO {app};
+                GRANT UPDATE ON dbo.CustodyTransfers (Status, DecidedAtUtc, DecidedById, DecisionNotes, DecisionKey, DecisionFingerprint) TO {app};
+                GRANT INSERT ON dbo.CustodyEvents TO {app};
+                GRANT UPDATE ON dbo.Evidence (HeadMac, EventCount, CurrentCustodianId) TO {app};
+                GRANT UPDATE ON dbo.EvidenceInbox (EventCount, LastEventAtUtc, CurrentCustodianId, CurrentCustodianName,
+                    PendingTransferId, PendingToCustodianId, PendingSinceUtc,
+                    IntegrityStatus, IntegrityCheckedAtUtc, IntegrityCheckedThroughSeq) TO {app};', N'{app}', @quotedLogin);
             EXEC sys.sp_executesql @sql;
 
             -- Explicit DENY outlives any later write grant: the app can never rewrite custody history.
             SET @sql = N'DENY UPDATE, DELETE ON dbo.CustodyEvents TO ' + @quotedLogin;
             EXEC sys.sp_executesql @sql;
             """;
-        // Reads plus verification verdicts for now; write endpoints add INSERT per table, and CustodyEvents keeps its DENY.
+        // Column-level grants; CustodyEvents keeps its DENY, and nothing may delete.
         await ExecuteAsync(connection, sql,
         [
             new SqlParameter("@login", SqlDbType.NVarChar, 128) { Value = login },

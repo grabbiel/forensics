@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Security.Claims;
+using EvidenceChain.Application.Custody;
 using EvidenceChain.Domain.Custody;
 using EvidenceChain.Domain.People;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -26,11 +27,18 @@ public static class Policies
 /// <summary>Only the transfer's recipient may accept or reject it.</summary>
 public sealed class TransferRecipientRequirement : IAuthorizationRequirement;
 
-internal sealed class TransferRecipientHandler : AuthorizationHandler<TransferRecipientRequirement, CustodyTransfer>
+/// <summary>Accepts the transfer as the domain holds it or as clients see it.</summary>
+internal sealed class TransferRecipientHandler : AuthorizationHandler<TransferRecipientRequirement>
 {
-    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, TransferRecipientRequirement requirement, CustodyTransfer resource)
+    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, TransferRecipientRequirement requirement)
     {
-        if (context.User.TryGetUserId(out var userId) && userId == resource.ToCustodianId)
+        int? recipient = context.Resource switch
+        {
+            CustodyTransfer transfer => transfer.ToCustodianId,
+            TransferResource transfer => transfer.To.Id,
+            _ => null,
+        };
+        if (recipient is not null && context.User.TryGetUserId(out var userId) && userId == recipient)
             context.Succeed(requirement);
         return Task.CompletedTask;
     }

@@ -27,6 +27,8 @@ public sealed class ProblemDetailsTests(ApiFactory factory)
     [InlineData("pending-unknown", 409, ProblemTypes.InvalidTransition)]
     [InlineData("in-flight", 409, ProblemTypes.IdempotencyInFlight)]
     [InlineData("exhausted", 409, ProblemTypes.DailyIndexExhausted)]
+    [InlineData("busy", 409, ProblemTypes.ConcurrentWrite)]
+    [InlineData("invalid-field", 400, ProblemTypes.Validation)]
     [InlineData("key-reused", 422, ProblemTypes.IdempotencyKeyReused)]
     [InlineData("not-recipient", 403, Rfc403)]
     [InlineData("role", 403, Rfc403)]
