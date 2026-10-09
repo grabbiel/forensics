@@ -12,18 +12,26 @@ export function loginLoader({ request }: LoaderFunctionArgs) {
   return null
 }
 
+/** Why a sign-in failed, and after a 429 the seconds before trying again. */
+interface LoginFailure {
+  error: string
+  retryAfterSeconds?: number
+}
+
 /** Signs in as the chosen demo user and returns to where the user was headed. */
 export async function loginAction({ request }: ActionFunctionArgs) {
   const form = await request.formData()
   const userName = String(form.get('userName') ?? '').trim()
-  if (!userName) return data({ error: 'Indica un usuario.' }, { status: 400 })
+  if (!userName) return data<LoginFailure>({ error: 'Indica un usuario.' }, { status: 400 })
 
   try {
     saveSession(await signIn(userName, request.signal))
   } catch (error) {
-    if (error instanceof ApiError && error.status === 400) return data({ error: `No hay ningún usuario «${userName}».` }, { status: 400 })
-    if (error instanceof ApiError) return data({ error: 'El servidor no pudo iniciar la sesión. Inténtalo de nuevo.' }, { status: 502 })
-    return data({ error: 'Sin conexión con el servidor. Comprueba tu red e inténtalo de nuevo.' }, { status: 503 })
+    if (error instanceof ApiError && error.status === 400) return data<LoginFailure>({ error: `No hay ningún usuario «${userName}».` }, { status: 400 })
+    if (error instanceof ApiError && error.status === 429)
+      return data<LoginFailure>({ error: 'Demasiados intentos de inicio de sesión seguidos.', retryAfterSeconds: error.retryAfterSeconds }, { status: 429 })
+    if (error instanceof ApiError) return data<LoginFailure>({ error: 'El servidor no pudo iniciar la sesión. Inténtalo de nuevo.' }, { status: 502 })
+    return data<LoginFailure>({ error: 'Sin conexión con el servidor. Comprueba tu red e inténtalo de nuevo.' }, { status: 503 })
   }
   return redirect(safeRedirect(new URL(request.url).searchParams.get('redirectTo')))
 }

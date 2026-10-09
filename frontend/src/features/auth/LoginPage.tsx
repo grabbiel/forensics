@@ -3,6 +3,7 @@ import type { Icon } from '@phosphor-icons/react'
 import type { FormEvent } from 'react'
 import { Form, useActionData, useNavigation, useSearchParams } from 'react-router'
 import type { Role } from '../../auth/session'
+import { useWaited } from '../../lib/useWaited'
 import type { loginAction } from './loginRoute'
 
 /** The demo personas; every seeded user can sign in, these three cover the roles. */
@@ -19,8 +20,11 @@ export function LoginPage() {
   // Busy from the submission until the page it leads to has loaded, not only while the token is requested.
   const busy = navigation.state !== 'idle' && (navigation.formAction?.startsWith('/login') ?? false)
   const pendingUser = busy ? String(navigation.formData?.get('userName') ?? '') : null
+  // After a 429, another attempt before the server's wait is over would only be refused again.
+  const waited = useWaited(result?.retryAfterSeconds, result)
+  const held = busy || !waited
   // aria-disabled keeps focus on the pressed button; this keeps it from submitting again meanwhile.
-  const holdWhileBusy = (event: FormEvent<HTMLFormElement>) => busy && event.preventDefault()
+  const holdWhileHeld = (event: FormEvent<HTMLFormElement>) => held && event.preventDefault()
   const [searchParams] = useSearchParams()
   const action = searchParams.size > 0 ? `/login?${searchParams}` : '/login'
 
@@ -42,15 +46,17 @@ export function LoginPage() {
         {result?.error && (
           <p className="notice notice--error" role="alert">
             {result.error}
+            {result.retryAfterSeconds !== undefined &&
+              (waited ? ' Ya puedes volver a intentarlo.' : ` Espera ${result.retryAfterSeconds} s y vuelve a intentarlo.`)}
           </p>
         )}
 
         <ul className="personas">
           {DEMO_USERS.map(({ userName, displayName, role, can, icon: PersonaIcon }) => (
             <li key={userName}>
-              <Form method="post" action={action} onSubmit={holdWhileBusy}>
+              <Form method="post" action={action} onSubmit={holdWhileHeld}>
                 <input type="hidden" name="userName" value={userName} />
-                <button type="submit" className="persona" aria-disabled={busy} disabled={busy && pendingUser !== userName}>
+                <button type="submit" className="persona" aria-disabled={held} disabled={busy && pendingUser !== userName}>
                   <PersonaIcon size={28} aria-hidden="true" />
                   <span className="persona__text">
                     <span className="persona__name">{displayName}</span>
@@ -65,11 +71,11 @@ export function LoginPage() {
           ))}
         </ul>
 
-        <Form method="post" action={action} className="login__other" onSubmit={holdWhileBusy}>
+        <Form method="post" action={action} className="login__other" onSubmit={holdWhileHeld}>
           <label htmlFor="other-user">Otra persona del equipo</label>
           <div className="login__other-row">
             <input id="other-user" name="userName" className="field" placeholder="p. ej. nuria.paredes" autoComplete="username" spellCheck={false} required />
-            <button type="submit" className="button button--ghost" aria-disabled={busy}>
+            <button type="submit" className="button button--ghost" aria-disabled={held}>
               Entrar
             </button>
           </div>

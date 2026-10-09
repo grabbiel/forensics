@@ -113,6 +113,34 @@ describe('routes and sign-in', () => {
     expect(getSession()).toBeNull()
   })
 
+  it('asks to wait after too many sign-ins, and holds the personas until the wait is over', async () => {
+    let throttled = true
+    const fetchMock = fakeApi((url) =>
+      url === '/api/v1/auth/token' && throttled
+        ? new Response(JSON.stringify({ status: 429 }), { status: 429, headers: { 'Content-Type': 'application/problem+json', 'Retry-After': '1' } })
+        : undefined,
+    )
+    const signIns = () => fetchMock.mock.calls.filter(([url]) => String(url) === '/api/v1/auth/token').length
+    const router = renderAt('/login')
+
+    const persona = await screen.findByRole('button', { name: /Lucía Ferrer/ })
+    await userEvent.click(persona)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Demasiados intentos de inicio de sesión seguidos. Espera 1 s y vuelve a intentarlo.')
+    expect(persona).toHaveAttribute('aria-disabled', 'true')
+    await userEvent.click(persona)
+    expect(signIns()).toBe(1)
+
+    throttled = false
+    await waitFor(() => expect(persona).toHaveAttribute('aria-disabled', 'false'), { timeout: 2_000 })
+    expect(alert).toHaveTextContent('Ya puedes volver a intentarlo.')
+    await userEvent.click(persona)
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    expect(getSession()?.user.role).toBe('Investigador')
+  })
+
   it('forgets a refused token and asks to sign in again, keeping the way back', async () => {
     signInAs('Supervisor')
     fakeApi((url) => (url.startsWith(`/api/v1/evidence/${detail.code}`) ? json(401, { status: 401 }, 'application/problem+json') : undefined))
