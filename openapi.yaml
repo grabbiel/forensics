@@ -509,9 +509,13 @@ paths:
       parameters:
         - name: role
           in: query
-          description: 'Investigador, Custodio or Supervisor.'
+          description: 'Investigador, Custodio or Supervisor, spelled exactly.'
           schema:
-            $ref: '#/components/schemas/UserRole'
+            enum:
+              - Investigador
+              - Custodio
+              - Supervisor
+            type: string
       responses:
         '200':
           description: OK
@@ -520,7 +524,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/UserSummary'
+                  $ref: '#/components/schemas/PersonSummary'
         '400':
           description: Bad Request
           content:
@@ -871,6 +875,20 @@ components:
           format: int32
         displayName:
           type: string
+    PersonSummary:
+      required:
+        - id
+        - displayName
+        - role
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+        displayName:
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
     ProblemDetails:
       type: object
       properties:

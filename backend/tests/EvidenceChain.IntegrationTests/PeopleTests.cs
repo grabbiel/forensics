@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using EvidenceChain.SyntheticData;
+using EvidenceChain.Domain.People;
+using EvidenceChain.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace EvidenceChain.IntegrationTests;
 
@@ -12,28 +15,37 @@ public sealed class PeopleTests(ApiFactory factory)
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
     [Fact]
-    public async Task Lists_everyone_or_one_role_by_display_name()
+    public async Task Lists_everyone_or_one_role_in_the_database_s_name_order_without_user_names()
     {
-        var client = (await factory.ReferenceApiAsync()).CreateClientAs(TestUsers.Investigator);
+        var api = await factory.ReferenceApiAsync();
+        var client = api.CreateClientAs(TestUsers.Investigator);
 
         var custodians = await client.GetFromJsonAsync<JsonElement[]>("/api/v1/people?role=Custodio", Token);
         var everyone = await client.GetFromJsonAsync<JsonElement[]>("/api/v1/people", Token);
 
-        var expected = SyntheticPeople.All.Where(u => u.Role == SyntheticRole.Custodio).Select(u => u.DisplayName).Order(StringComparer.Ordinal);
-        Assert.Equal(expected, custodians!.Select(p => p.GetProperty("displayName").GetString()).Order(StringComparer.Ordinal));
+        // The order SQL Server's collation gives, so the test does not depend on the test host's culture.
+        await using var scope = api.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var expected = await db.Users.Where(u => u.Role == UserRole.Custodio).OrderBy(u => u.DisplayName).ThenBy(u => u.UserId).Select(u => u.UserId).ToListAsync(Token);
+        Assert.Equal(expected, custodians!.Select(p => p.GetProperty("id").GetInt32()));
         Assert.All(custodians!, p => Assert.Equal("Custodio", p.GetProperty("role").GetString()));
-        Assert.Equal(SyntheticPeople.All.Count, everyone!.Length);
-        var names = everyone.Select(p => p.GetProperty("displayName").GetString()!).ToList();
-        Assert.Equal(names.Order(StringComparer.CurrentCulture), names); // by display name, as SQL Server collates
+        Assert.Equal(await db.Users.CountAsync(Token), everyone!.Length);
+        Assert.All(everyone, p => Assert.False(p.TryGetProperty("userName", out _)));
+    }
+
+    [Theory]
+    [InlineData("Admin")]
+    [InlineData("custodio")]
+    [InlineData("1")]
+    public async Task A_role_not_spelled_exactly_is_a_validation_problem(string role)
+    {
+        var response = await (await factory.ReferenceApiAsync()).CreateClientAs(TestUsers.Investigator).GetAsync($"/api/v1/people?role={role}", Token);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
-    public async Task An_unknown_role_is_a_validation_problem_and_signing_in_is_required()
+    public async Task Signing_in_is_required()
     {
-        var api = await factory.ReferenceApiAsync();
-
-        var invalid = await api.CreateClientAs(TestUsers.Investigator).GetAsync("/api/v1/people?role=Admin", Token);
-        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await api.CreateClient().GetAsync("/api/v1/people", Token)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await (await factory.ReferenceApiAsync()).CreateClient().GetAsync("/api/v1/people", Token)).StatusCode);
     }
 }
