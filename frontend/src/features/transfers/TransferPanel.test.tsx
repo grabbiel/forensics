@@ -7,20 +7,12 @@ import type { ChainEvent, EvidenceDetail, TransferView } from '../../api/evidenc
 import type { Role, SessionUser } from '../../auth/session'
 import { saveSession } from '../../auth/session'
 import { routes } from '../../routes'
+import { custodians, diego, lucia, nuria, requestTo, UUID_V7 } from '../../test/fixtures'
 import { DEMO, signInAs } from '../../test/session'
 import { getIntent, intentScope, startIntent } from './pendingIntent'
 
-const person = (id: number, displayName: string) => ({ id, displayName })
-const lucia = person(1, 'Lucía Ferrer')
-const diego = person(4, 'Diego Salas')
-const nuria = person(5, 'Nuria Paredes')
 const NURIA: SessionUser = { id: 5, userName: 'nuria.paredes', displayName: 'Nuria Paredes', role: 'Custodio' }
-const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const code = 'LOG202609110007'
-const custodians = [
-  { ...diego, role: 'Custodio' },
-  { ...nuria, role: 'Custodio' },
-]
 const pending: TransferView = {
   transferId: 7, status: 'Pending', from: diego, to: nuria, requestedBy: lucia,
   requestedAtUtc: '2026-10-08T10:00:00Z', reason: 'Peritaje externo', etag: '"00000000000007d1"',
@@ -86,16 +78,6 @@ async function open() {
 }
 
 const progress = () => within(screen.getByRole('region', { name: 'Transferencia de custodia' })).getAllByRole('status')[0]
-
-/** Fills and sends the request dialog. */
-async function requestTo(name: string, reason: string) {
-  await userEvent.click(screen.getByRole('button', { name: 'Solicitar transferencia' }))
-  const dialog = screen.getByRole('dialog', { name: 'Solicitar transferencia' })
-  await userEvent.selectOptions(within(dialog).getByLabelText('Custodio que la recibirá'), name)
-  await userEvent.clear(within(dialog).getByLabelText('Motivo'))
-  await userEvent.type(within(dialog).getByLabelText('Motivo'), reason)
-  await userEvent.click(within(dialog).getByRole('button', { name: 'Enviar solicitud' }))
-}
 
 describe('TransferPanel', () => {
   it('requests from the dialog, shows "Sending" until the server’s pending transfer replaces it, and says so', async () => {
