@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Prepares the Azure SQL database after `azd provision` (roadmap §1.3), as the signed-in SQL Entra admin:
-# migrate, create the API's managed-identity user (read-only on Day 1), set compatibility 170, insert tracer rows.
+# migrate, create the API's managed-identity user (reads and verification verdicts; custody events never change),
+# allow SNAPSHOT reads, set compatibility 170, insert tracer rows.
 # Opens a firewall rule for this machine's public IP and always removes it on exit.
 # Usage: infra/scripts/prepare-database.sh [--skip-tracer] [--ip <address>]
 set -euo pipefail
@@ -50,12 +51,18 @@ echo "1/3 Applying migrations"
   --project src/EvidenceChain.Infrastructure --startup-project src/EvidenceChain.Api --connection "$connection")
 
 # FROM EXTERNAL PROVIDER needs an admin who can read the directory (a guest admin needs a directory role).
-echo "2/3 Granting the API's managed identity read access"
+echo "2/3 Granting the API's managed identity its access"
 sqlcmd -S "tcp:${sql_fqdn},1433" -d "$database" --authentication-method ActiveDirectoryDefault -b -Q "
 IF DATABASE_PRINCIPAL_ID(N'${api_name}') IS NULL
     CREATE USER [${api_name}] FROM EXTERNAL PROVIDER WITH OBJECT_ID = '${api_principal_id}';
 ALTER ROLE db_datareader ADD MEMBER [${api_name}];
--- Day 2 grants INSERT per write table; CustodyEvents never gets UPDATE or DELETE.
+-- Verification records its verdict, and only that, in the inbox projection.
+GRANT UPDATE ON dbo.EvidenceInbox (IntegrityStatus, IntegrityCheckedAtUtc, IntegrityCheckedThroughSeq) TO [${api_name}];
+-- Explicit DENY outlives any later write grant: custody history is never rewritten.
+DENY UPDATE, DELETE ON dbo.CustodyEvents TO [${api_name}];
+-- Multi-statement reads run in SNAPSHOT transactions; Azure SQL allows them by default.
+IF (SELECT snapshot_isolation_state FROM sys.databases WHERE name = DB_NAME()) = 0
+    ALTER DATABASE CURRENT SET ALLOW_SNAPSHOT_ISOLATION ON;
 ALTER DATABASE CURRENT SET COMPATIBILITY_LEVEL = 170;"
 
 if [[ "$skip_tracer" == false ]]; then

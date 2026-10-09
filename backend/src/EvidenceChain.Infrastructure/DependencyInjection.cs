@@ -1,8 +1,12 @@
 using EvidenceChain.Application.Inbox;
+using EvidenceChain.Application.Integrity;
 using EvidenceChain.Application.People;
+using EvidenceChain.Application.Review;
 using EvidenceChain.Infrastructure.Inbox;
+using EvidenceChain.Infrastructure.Integrity;
 using EvidenceChain.Infrastructure.People;
 using EvidenceChain.Infrastructure.Persistence;
+using EvidenceChain.Infrastructure.Review;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace EvidenceChain.Infrastructure;
@@ -18,6 +22,8 @@ public static class DependencyInjection
         services.AddDbContext<AppDbContext>(options => SqlServerSetup.Configure(options, connectionString));
         services.AddScoped<IEvidenceInboxQuery, EvidenceInboxQuery>();
         services.AddScoped<IUserDirectory, UserDirectory>();
+        services.AddScoped<IEvidenceQueries, EvidenceQueries>();
+        services.AddScoped<IChainVerificationStore, ChainVerificationStore>();
         return services;
     }
 }

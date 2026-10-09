@@ -29,6 +29,8 @@ internal sealed class EvidenceInboxConfiguration : IEntityTypeConfiguration<Evid
         builder.HasIndex(r => new { r.TypeCode, r.LastEventAtUtc, r.EvidenceId }).IsDescending(false, true, true).HasDatabaseName("IX_EvidenceInbox_Type");
         builder.HasIndex(r => new { r.CurrentCustodianId, r.LastEventAtUtc, r.EvidenceId }).IsDescending(false, true, true).HasDatabaseName("IX_EvidenceInbox_Custodian");
         builder.HasIndex(r => new { r.IntegrityStatus, r.LastEventAtUtc, r.EvidenceId }).IsDescending(false, true, true).HasDatabaseName("IX_EvidenceInbox_Integrity");
+        // The integrity sweep's "checked longest ago" order; never-checked (NULL) sorts first.
+        builder.HasIndex(r => new { r.IntegrityCheckedAtUtc, r.EvidenceId }).HasDatabaseName("IX_EvidenceInbox_IntegrityChecked");
     }
 }
 

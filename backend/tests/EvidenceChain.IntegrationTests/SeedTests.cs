@@ -16,8 +16,8 @@ namespace EvidenceChain.IntegrationTests;
 [Collection(nameof(SqlCollection))]
 public sealed class SeedTests(ApiFactory factory)
 {
-    private static readonly IntegrityKeyRing Keys = new("test", new Dictionary<string, byte[]> { ["test"] = SHA256.HashData("seed-tests"u8.ToArray()) });
-    private static readonly Lazy<SyntheticDataset> Dataset = new(() => DatasetBuilder.Build(ReferenceDataset.Seed, ReferenceDataset.AnchorUtc));
+    private static readonly IntegrityKeyRing Keys = ReferenceData.Keys;
+    private static readonly Lazy<SyntheticDataset> Dataset = ReferenceData.Dataset;
     private static Task<(string A, string B)>? _databases;
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
@@ -195,8 +195,4 @@ public sealed class SeedTests(ApiFactory factory)
         throw new DirectoryNotFoundException("Repository root not found.");
     }
 
-    private sealed class FixedClock(DateTime nowUtc) : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() => new(nowUtc, TimeSpan.Zero);
-    }
 }

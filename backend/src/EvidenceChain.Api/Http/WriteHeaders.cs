@@ -1,4 +1,5 @@
 using EvidenceChain.Api.Problems;
+using EvidenceChain.Application.Common;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.Infrastructure;

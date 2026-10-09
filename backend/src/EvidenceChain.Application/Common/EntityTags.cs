@@ -1,6 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 
-namespace EvidenceChain.Api.Http;
+namespace EvidenceChain.Application.Common;
 
 /// <summary>Strong ETags for rowversion-guarded resources: the 8-byte version as quoted lowercase hex.</summary>
 public static class EntityTags

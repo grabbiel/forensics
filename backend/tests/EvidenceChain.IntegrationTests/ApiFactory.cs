@@ -1,17 +1,23 @@
 extern alias seeder;
 
 using DotNet.Testcontainers.Builders;
+using EvidenceChain.Application.Anomalies;
+using EvidenceChain.Domain.Anomalies;
 using EvidenceChain.Domain.Catalog;
 using EvidenceChain.Domain.People;
 using EvidenceChain.Infrastructure.Persistence;
 using EvidenceChain.IntegrationTests.Probes;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Testcontainers.MsSql;
 using DatabasePreparation = seeder::EvidenceChain.Seeder.DatabasePreparation;
+using DatasetLoader = seeder::EvidenceChain.Seeder.DatasetLoader;
+using SeedMode = seeder::EvidenceChain.Seeder.SeedMode;
 
 namespace EvidenceChain.IntegrationTests;
 
@@ -27,6 +33,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     private const string AppPassword = "DevOnly_TestPassw0rd!2026";
     private MsSqlContainer? _sql;
     private WebApplicationFactory<Program>? _probes;
+    private Task<WebApplicationFactory<Program>>? _reference;
 
     /// <summary>sa connection to the test database, or null when Docker is unavailable.</summary>
     public string? AdminConnectionString { get; private set; }
@@ -36,6 +43,34 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     /// <summary>Why database tests are skipped, if they are.</summary>
     public string? SkipReason { get; private set; }
+
+    /// <summary>
+    /// The API over its own database holding the reference dataset, signed with <see cref="ReferenceData.Keys"/>, with the
+    /// overdue rule's clock at the dataset's anchor so anomalies read as the fixtures describe them (tokens keep real time).
+    /// It connects as the least-privilege app login, as in compose. Loaded once; tests may record verifications in it but
+    /// write nothing else.
+    /// </summary>
+    public Task<WebApplicationFactory<Program>> ReferenceApiAsync()
+    {
+        Assert.SkipWhen(SkipReason is not null, SkipReason ?? "");
+        return _reference ??= LoadAsync();
+
+        async Task<WebApplicationFactory<Program>> LoadAsync()
+        {
+            var admin = await CreateDatabaseAsync("EvidenceChainReference");
+            await DatasetLoader.SeedAsync(admin, ReferenceData.Dataset.Value, ReferenceData.Keys, SeedMode.Strict, "seed", CancellationToken.None);
+            await PrepareAsync(admin, CancellationToken.None);
+            var app = new SqlConnectionStringBuilder(admin) { UserID = AppLogin, Password = AppPassword }.ConnectionString;
+            return WithWebHostBuilder(builder =>
+            {
+                builder.UseSetting("ConnectionStrings:Default", app);
+                builder.UseSetting("Integrity:ActiveKeyId", ReferenceData.KeyId);
+                builder.UseSetting($"Integrity:Keys:{ReferenceData.KeyId}", ReferenceData.KeyBase64);
+                builder.ConfigureTestServices(services => services.AddSingleton(sp => new OverdueTransferRule(
+                    sp.GetRequiredService<IOptions<AnomalyOptions>>().Value.TransferAcceptanceDeadline, new FixedClock(ReferenceData.Dataset.Value.AnchorUtc))));
+            });
+        }
+    }
 
     /// <summary>The same API plus the test-only <see cref="ProbeController"/>; the published contract never sees it.</summary>
     public WebApplicationFactory<Program> Probes => _probes ??= WithWebHostBuilder(builder =>
@@ -79,8 +114,13 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     public async Task<string> CreateDatabaseAsync(string name, CancellationToken cancellationToken = default)
     {
         var connectionString = new SqlConnectionStringBuilder(AdminConnectionString) { InitialCatalog = name }.ConnectionString;
-        await using var db = SqlServerSetup.CreateContext(connectionString);
-        await db.Database.MigrateAsync(cancellationToken);
+        await using (var db = SqlServerSetup.CreateContext(connectionString))
+            await db.Database.MigrateAsync(cancellationToken);
+
+        // The API's multi-statement reads use SNAPSHOT transactions.
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await DatabasePreparation.EnableSnapshotIsolationAsync(connection, cancellationToken);
         return connectionString;
     }
 
@@ -89,13 +129,16 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         new(type, DateOnly.FromDateTime(registeredAtUtc), 1, description, registeredAtUtc.AddHours(-1), registeredAtUtc,
             registeredById: 1, initialCustodianId: 4, new EvidenceContent(System.Text.Encoding.UTF8.GetBytes(description), "text/plain; charset=utf-8"));
 
-    /// <summary>Runs the seeder's prepare step (RCSI and the app login) as sa.</summary>
-    public async Task PrepareAsync(CancellationToken cancellationToken = default)
+    /// <summary>Runs the seeder's prepare step (RCSI, snapshot isolation and the app login) as sa.</summary>
+    public Task PrepareAsync(CancellationToken cancellationToken = default) => PrepareAsync(AdminConnectionString!, cancellationToken);
+
+    private static async Task PrepareAsync(string adminConnectionString, CancellationToken cancellationToken)
     {
-        await using (var connection = new SqlConnection(AdminConnectionString))
+        await using (var connection = new SqlConnection(adminConnectionString))
         {
             await connection.OpenAsync(cancellationToken);
             await DatabasePreparation.EnableReadCommittedSnapshotAsync(connection, cancellationToken);
+            await DatabasePreparation.EnableSnapshotIsolationAsync(connection, cancellationToken);
             await DatabasePreparation.CreateAppLoginAsync(connection, AppLogin, AppPassword, cancellationToken);
         }
 
@@ -103,16 +146,21 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         SqlConnection.ClearAllPools();
     }
 
-    /// <summary>Points the API at the container (or at an unused address when Docker is missing).</summary>
-    protected override void ConfigureWebHost(IWebHostBuilder builder) =>
+    /// <summary>Points the API at the container (or at an unused address when Docker is missing); no background sweeps.</summary>
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
         builder.UseSetting("ConnectionStrings:Default",
             ConnectionString ?? "Server=127.0.0.1,1;Database=Unused;User Id=x;Password=x;Encrypt=False;Connect Timeout=1");
+        builder.UseSetting("Integrity:Sweep:Enabled", "false");
+    }
 
     /// <summary>Stops the host, then the container.</summary>
     public override async ValueTask DisposeAsync()
     {
         if (_probes is not null)
             await _probes.DisposeAsync();
+        if (_reference is { IsCompletedSuccessfully: true })
+            await _reference.Result.DisposeAsync();
         await base.DisposeAsync();
         if (_sql is not null)
             await _sql.DisposeAsync();

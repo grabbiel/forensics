@@ -1,5 +1,8 @@
+using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Nodes;
 using EvidenceChain.Api.Http;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
 
@@ -40,6 +43,8 @@ internal static class OpenApiDocumentSetup
             if (!metadata.OfType<IAllowAnonymous>().Any())
                 operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference(BearerScheme, context.Document)] = [] }];
 
+            PublishAllowedValues(operation, context);
+
             if (metadata.OfType<RequireIdempotencyKeyAttribute>().Any())
                 AddHeader(operation, RequireIdempotencyKeyAttribute.Header, "uuid",
                     "A new UUID for each distinct write; resend the same one to retry safely.");
@@ -48,6 +53,20 @@ internal static class OpenApiDocumentSetup
                     "The ETag of the resource as last read, quotes included; a newer version answers 409.");
             return Task.CompletedTask;
         });
+    }
+
+    /// <summary>A parameter limited by [AllowedValues] lists them as its enum, so clients see the choices.</summary>
+    private static void PublishAllowedValues(OpenApiOperation operation, OpenApiOperationTransformerContext context)
+    {
+        foreach (var description in context.Description.ParameterDescriptions)
+        {
+            var allowed = (description.ParameterDescriptor as ControllerParameterDescriptor)?.ParameterInfo
+                .GetCustomAttributes(typeof(AllowedValuesAttribute), inherit: false).OfType<AllowedValuesAttribute>().SingleOrDefault();
+            var parameter = operation.Parameters?.FirstOrDefault(p => p.Name == description.Name);
+            if (allowed is null || parameter?.Schema is not OpenApiSchema schema)
+                continue;
+            schema.Enum = allowed.Values.OfType<string>().Select(v => (JsonNode)JsonValue.Create(v)).ToList();
+        }
     }
 
     private static void AddHeader(OpenApiOperation operation, string name, string? format, string description)
