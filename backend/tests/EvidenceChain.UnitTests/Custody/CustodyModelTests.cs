@@ -1,0 +1,65 @@
+using EvidenceChain.Domain.Catalog;
+using EvidenceChain.Domain.Custody;
+
+namespace EvidenceChain.UnitTests.Custody;
+
+public sealed class CustodyModelTests
+{
+    private static readonly DateTime Requested = new(2026, 10, 8, 9, 0, 0, DateTimeKind.Utc);
+    private static byte[] Hash(byte fill) => Enumerable.Repeat(fill, 32).ToArray();
+
+    [Fact]
+    public void Content_hash_cannot_drift_from_its_bytes()
+    {
+        var content = new EvidenceContent([1, 2, 3], "text/plain");
+        var exposed = content.Bytes;
+        exposed[0] = 9;
+        content.Sha256[0] ^= 0xFF;
+
+        Assert.Equal([1, 2, 3], content.Bytes);
+        Assert.Equal(System.Security.Cryptography.SHA256.HashData([1, 2, 3]), content.Sha256);
+    }
+
+    [Fact]
+    public void Only_the_pending_recipient_decides_once()
+    {
+        var transfer = new CustodyTransfer(1, fromCustodianId: 4, toCustodianId: 5, requestedById: 1, Requested, "Análisis", Guid.CreateVersion7(), Hash(1));
+
+        Assert.Throws<InvalidOperationException>(() => transfer.Accept(4, Requested.AddHours(1), null, Guid.CreateVersion7(), Hash(2)));
+        Assert.Throws<ArgumentException>(() => transfer.Accept(5, Requested.AddHours(-1), null, Guid.CreateVersion7(), Hash(2)));
+        transfer.Reject(5, Requested.AddHours(1), "Sin orden judicial", Guid.CreateVersion7(), Hash(2));
+
+        Assert.Equal(TransferStatus.Rejected, transfer.Status);
+        Assert.Throws<InvalidOperationException>(() => transfer.Accept(5, Requested.AddHours(2), null, Guid.CreateVersion7(), Hash(3)));
+        Assert.Throws<ArgumentException>(() => new CustodyTransfer(1, 4, 4, 1, Requested, "Mismo", Guid.CreateVersion7(), Hash(1)));
+    }
+
+    [Fact]
+    public void Chain_heads_advance_one_contiguous_event_at_a_time()
+    {
+        var evidence = new Evidence(EvidenceTypes.Log, DateOnly.FromDateTime(Requested), 1, "Log", Requested.AddHours(-1), Requested, 1, 4, new EvidenceContent([1], "text/plain"));
+
+        Assert.Throws<InvalidOperationException>(() => evidence.AdvanceHead(2, Hash(1)));
+        evidence.AdvanceHead(1, Hash(1));
+        evidence.HeadMac![0] = 0;
+
+        Assert.Equal(1, evidence.EventCount);
+        Assert.Equal(Hash(1), evidence.HeadMac); // the mutation above hit a copy
+        Assert.Throws<ArgumentException>(() => new Evidence(EvidenceTypes.Log, new DateOnly(2026, 10, 7), 1, "Log", Requested, Requested, 1, 4, new EvidenceContent([1], "text/plain")));
+        Assert.Throws<ArgumentException>(() => new Evidence(EvidenceTypes.Log, DateOnly.FromDateTime(Requested), 1, "Log", Requested, DateTime.SpecifyKind(Requested, DateTimeKind.Local), 1, 4, new EvidenceContent([1], "text/plain")));
+    }
+
+    [Fact]
+    public void Events_copy_their_macs_and_genesis_commits_the_content()
+    {
+        var mac = Hash(7);
+        var genesis = CustodyEvent.Genesis(1, Requested, 1, 4, Hash(3), 10, "text/plain", "Registro", "dev", mac, 2);
+        mac[0] = 0;
+        genesis.Mac[1] = 0;
+
+        Assert.Equal((1, CustodyEventKind.EvidenceRegistered, 4), (genesis.Seq, genesis.Kind, genesis.ToCustodianId!.Value));
+        Assert.Equal(Hash(7), genesis.Mac);
+        Assert.Null(genesis.PrevMac);
+        Assert.Throws<ArgumentOutOfRangeException>(() => CustodyEvent.ForTransfer(1, 2, CustodyEventKind.EvidenceRegistered, Requested, 1, 1, 4, 5, "", "dev", Hash(1), Hash(2), 2));
+    }
+}

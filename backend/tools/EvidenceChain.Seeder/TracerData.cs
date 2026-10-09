@@ -1,29 +1,40 @@
+using System.Text;
 using EvidenceChain.Domain.Catalog;
 using EvidenceChain.Infrastructure.Persistence;
+using EvidenceChain.SyntheticData;
 using Microsoft.EntityFrameworkCore;
 
 namespace EvidenceChain.Seeder;
 
-/// <summary>Five hand-picked rows for the Day 1 tracer bullet; replaced by the synthetic dataset on Day 2.</summary>
+/// <summary>Five hand-picked rows for the tracer bullet, without custody events; `seed` replaces them.</summary>
 internal static class TracerData
 {
-    /// <summary>Inserts the tracer rows when the table is empty and returns their codes.</summary>
-    public static async Task<IReadOnlyList<string>> InsertIfEmptyAsync(AppDbContext db, DateOnly todayUtc, CancellationToken cancellationToken)
+    /// <summary>Inserts the users and tracer rows when no evidence exists, and returns the codes.</summary>
+    public static async Task<IReadOnlyList<string>> InsertIfEmptyAsync(AppDbContext db, DateTime nowUtc, CancellationToken cancellationToken)
     {
         if (await db.Evidence.AnyAsync(cancellationToken))
             return [];
 
-        Evidence[] rows =
+        await DemoUsers.EnsureAsync(db, cancellationToken);
+
+        var today = DateOnly.FromDateTime(nowUtc);
+        var investigator = DemoUsers.Id("investigador.demo");
+        (string Type, short No, string Description, string Custodian)[] rows =
         [
-            new(EvidenceTypes.Log, todayUtc, 1, "Log del firewall fw-edge-01, 14:00-16:00 UTC"),
-            new(EvidenceTypes.Log, todayUtc, 2, "Log de la pasarela VPN vpn-02, sesión nocturna"),
-            new(EvidenceTypes.Csv, todayUtc, 1, "Extracto bancario, cuenta XA00-0041, septiembre 2026"),
-            new(EvidenceTypes.Csv, todayUtc, 2, "Transacciones con tarjeta, lote 7 del comercio"),
-            new(EvidenceTypes.Eml, todayUtc, 1, "Correo de j.perez@example.test: «Transferencia urgente»"),
+            (EvidenceTypes.Log, 1, "Log del firewall fw-edge-01, 14:00-16:00 UTC", SyntheticPeople.DemoCustodian),
+            (EvidenceTypes.Log, 2, "Log de la pasarela VPN vpn-02, sesión nocturna", "nuria.paredes"),
+            (EvidenceTypes.Csv, 1, "Extracto bancario, cuenta XA00-0041, septiembre 2026", "oscar.villalba"),
+            (EvidenceTypes.Csv, 2, "Transacciones con tarjeta, lote 7 del comercio", "carmen.robles"),
+            (EvidenceTypes.Eml, 1, "Correo de j.perez@example.test: «Transferencia urgente»", SyntheticPeople.DemoCustodian),
         ];
 
-        db.Evidence.AddRange(rows);
+        var evidences = rows.Select(r => new Evidence(
+            r.Type, today, r.No, r.Description, capturedAtUtc: nowUtc.AddHours(-2), registeredAtUtc: nowUtc,
+            investigator, DemoUsers.Id(r.Custodian),
+            new EvidenceContent(Encoding.UTF8.GetBytes(r.Description + "\n"), DatasetBuilder.MediaType(r.Type)))).ToArray();
+
+        db.Evidence.AddRange(evidences);
         await db.SaveChangesAsync(cancellationToken);
-        return rows.Select(r => r.Code).ToArray();
+        return evidences.Select(e => e.Code).ToArray();
     }
 }

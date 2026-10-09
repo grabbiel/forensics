@@ -50,8 +50,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         {
             CommandLine.Allow(options, "connection");
             await using var db = SqlServerSetup.CreateContext(RequireConnection());
-            var today = DateOnly.FromDateTime(TimeProvider.System.GetUtcNow().UtcDateTime);
-            var codes = await TracerData.InsertIfEmptyAsync(db, today, cancellationToken);
+            var codes = await TracerData.InsertIfEmptyAsync(db, TimeProvider.System.GetUtcNow().UtcDateTime, cancellationToken);
             Console.WriteLine(codes.Count == 0 ? "Evidence already present; nothing inserted." : $"Inserted: {string.Join(", ", codes)}");
             return 0;
         }
