@@ -657,6 +657,15 @@ svg {
   cursor: progress;
 }
 
+/* Held until a 429's wait is over: dimmed like a disabled persona, yet still focusable. */
+.persona--waiting,
+.persona--waiting:hover {
+  border-color: var(--line);
+  background: var(--surface);
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .persona > svg:first-child {
   flex: none;
   color: var(--accent);

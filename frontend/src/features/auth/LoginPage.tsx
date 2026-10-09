@@ -56,7 +56,7 @@ export function LoginPage() {
             <li key={userName}>
               <Form method="post" action={action} onSubmit={holdWhileHeld}>
                 <input type="hidden" name="userName" value={userName} />
-                <button type="submit" className="persona" aria-disabled={held} disabled={busy && pendingUser !== userName}>
+                <button type="submit" className={waited ? 'persona' : 'persona persona--waiting'} aria-disabled={held} disabled={busy && pendingUser !== userName}>
                   <PersonaIcon size={28} aria-hidden="true" />
                   <span className="persona__text">
                     <span className="persona__name">{displayName}</span>
