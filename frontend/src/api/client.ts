@@ -1,3 +1,5 @@
+import { getSession } from '../auth/session'
+
 /** RFC 9457 problem details, as returned by the API for every 4xx/5xx. */
 export interface ProblemDetails {
   type?: string
@@ -21,14 +23,45 @@ export class ApiError extends Error {
   }
 }
 
+/** A successful write: its status, body and the headers that matter (ETag, Location, Idempotent-Replayed). */
+export interface Sent<T> {
+  status: number
+  body: T
+  headers: Headers
+}
+
 // Empty means same origin: the Vite dev proxy or the nginx container forwards /api.
 const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 
-/** GETs JSON. Never retries; aborts with the router's signal when a newer navigation starts. */
+/**
+ * GETs JSON with the signed-in user's token. Never retries: a newer navigation aborts it through `signal`, and
+ * every failure surfaces to the caller.
+ */
 export async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, { signal, headers: { Accept: 'application/json' } })
+  const response = await fetch(`${baseUrl}${path}`, { signal, headers: headers({ Accept: 'application/json' }) })
   if (!response.ok) throw await toApiError(response)
   return (await response.json()) as T
+}
+
+/**
+ * POSTs JSON. Never retries, above all not a 409: a conflict is an answer about the current state, and repeating the
+ * write would act on a version the user never saw. Retrying is the user's call, with the same Idempotency-Key.
+ */
+export async function postJson<T>(path: string, body: unknown, options: { signal?: AbortSignal; headers?: Record<string, string> } = {}): Promise<Sent<T>> {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    signal: options.signal,
+    headers: headers({ Accept: 'application/json', 'Content-Type': 'application/json', ...options.headers }),
+    body: JSON.stringify(body ?? {}),
+  })
+  if (!response.ok) throw await toApiError(response)
+  return { status: response.status, body: (await response.json()) as T, headers: response.headers }
+}
+
+/** Adds the bearer token when someone is signed in. */
+function headers(base: Record<string, string>): Record<string, string> {
+  const token = getSession()?.accessToken
+  return token ? { ...base, Authorization: `Bearer ${token}` } : base
 }
 
 /** Builds an ApiError, keeping the problem body only when it really is problem+json. */
