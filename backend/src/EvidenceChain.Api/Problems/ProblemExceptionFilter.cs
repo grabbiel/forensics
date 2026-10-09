@@ -1,4 +1,4 @@
-using EvidenceChain.Api.Http;
+using EvidenceChain.Application.Common;
 using EvidenceChain.Application.Custody;
 using EvidenceChain.Application.Idempotency;
 using EvidenceChain.Application.People;

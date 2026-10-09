@@ -1,4 +1,4 @@
-using EvidenceChain.Api.Http;
+using EvidenceChain.Application.Common;
 
 namespace EvidenceChain.IntegrationTests;
 
