@@ -1,9 +1,12 @@
-import { LinkSimple } from '@phosphor-icons/react'
-import { Link, Outlet } from 'react-router'
+import { LinkSimple, SignOut } from '@phosphor-icons/react'
+import { Form, Link, Outlet } from 'react-router'
+import { getSession } from '../auth/session'
 import { SearchBox } from './SearchBox'
 
-/** Page frame: skip link, sticky header with the search, main content, footer. */
+/** Page frame: skip link, sticky header with the search and who is signed in, main content, footer. */
 export function AppShell() {
+  // Loaders send anyone signed out to /login, so a user is here whenever a page renders.
+  const user = getSession()?.user
   return (
     <>
       <a className="skip-link" href="#main">
@@ -18,6 +21,19 @@ export function AppShell() {
             <span className="brand__name">Evidence Chain</span>
           </Link>
           <SearchBox />
+          {user && (
+            <div className="account">
+              <span className="account__who">
+                <span className="account__name">{user.displayName}</span>
+                <span className="account__role">{user.role}</span>
+              </span>
+              <Form method="post" action="/logout">
+                <button type="submit" className="icon-button" aria-label={`Cerrar sesión de ${user.displayName}`} title="Cerrar sesión">
+                  <SignOut size={18} aria-hidden="true" />
+                </button>
+              </Form>
+            </div>
+          )}
         </div>
       </header>
       <main id="main" className="page" tabIndex={-1}>
