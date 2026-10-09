@@ -1,0 +1,47 @@
+# Builds the backend and runs every test, SQL Server ones included, on each pull request and push to main.
+# "Backend tests" is a required check in the "Protect main" ruleset.
+name: Backend
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Backend tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('backend/**/*.csproj', 'backend/Directory.Packages.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore EvidenceChain.slnx
+
+      - name: Build
+        run: dotnet build EvidenceChain.slnx --no-restore
+
+      # Testcontainers starts SQL Server 2025 on the runner's Docker; CI=true turns a missing Docker into a failure.
+      - name: Test
+        run: dotnet test --solution EvidenceChain.slnx --no-build
