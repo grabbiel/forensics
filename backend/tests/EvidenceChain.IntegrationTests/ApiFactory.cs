@@ -1,6 +1,8 @@
 extern alias seeder;
 
 using DotNet.Testcontainers.Builders;
+using EvidenceChain.Domain.Catalog;
+using EvidenceChain.Domain.People;
 using EvidenceChain.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -55,13 +57,30 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         await PrepareAsync();
 
         await using var db = SqlServerSetup.CreateContext(AdminConnectionString);
+        db.Users.AddRange(
+            new User(1, "investigador.demo", "Lucía Ferrer", "investigador.demo@example.test", UserRole.Investigador),
+            new User(4, "custodio.demo", "Diego Salas", "custodio.demo@example.test", UserRole.Custodio));
         db.Evidence.AddRange(
-            new(Domain.Catalog.EvidenceTypes.Log, new DateOnly(2026, 10, 6), 1, "Firewall log fw-edge-01"),
-            new(Domain.Catalog.EvidenceTypes.Eml, new DateOnly(2026, 10, 7), 1, "Email about a pending transfer"));
+            TestEvidence(EvidenceTypes.Log, new DateTime(2026, 10, 6, 9, 0, 0, DateTimeKind.Utc), "Firewall log fw-edge-01"),
+            TestEvidence(EvidenceTypes.Eml, new DateTime(2026, 10, 7, 9, 0, 0, DateTimeKind.Utc), "Email about a pending transfer"));
         await db.SaveChangesAsync();
 
         ConnectionString = new SqlConnectionStringBuilder(AdminConnectionString) { UserID = AppLogin, Password = AppPassword }.ConnectionString;
     }
+
+    /// <summary>A freshly migrated, empty database on the same server, for tests that need to write freely.</summary>
+    public async Task<string> CreateDatabaseAsync(string name, CancellationToken cancellationToken = default)
+    {
+        var connectionString = new SqlConnectionStringBuilder(AdminConnectionString) { InitialCatalog = name }.ConnectionString;
+        await using var db = SqlServerSetup.CreateContext(connectionString);
+        await db.Database.MigrateAsync(cancellationToken);
+        return connectionString;
+    }
+
+    /// <summary>Evidence #1 of its type and day, registered by user 1 and held by user 4.</summary>
+    private static Evidence TestEvidence(string type, DateTime registeredAtUtc, string description) =>
+        new(type, DateOnly.FromDateTime(registeredAtUtc), 1, description, registeredAtUtc.AddHours(-1), registeredAtUtc,
+            registeredById: 1, initialCustodianId: 4, new EvidenceContent(System.Text.Encoding.UTF8.GetBytes(description), "text/plain; charset=utf-8"));
 
     /// <summary>Runs the seeder's prepare step (RCSI and the app login) as sa.</summary>
     public async Task PrepareAsync(CancellationToken cancellationToken = default)
