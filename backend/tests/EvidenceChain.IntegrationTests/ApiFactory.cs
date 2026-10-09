@@ -17,7 +17,7 @@ namespace EvidenceChain.IntegrationTests;
 [CollectionDefinition(nameof(SqlCollection))]
 public sealed class SqlCollection : ICollectionFixture<ApiFactory>;
 
-/// <summary>Runs the API against a real SQL Server 2025 container. Without Docker, DB tests skip; the rest still run.</summary>
+/// <summary>Runs the API against a real SQL Server 2025 container. Without Docker, DB tests skip locally (on CI they fail); the rest still run.</summary>
 public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private const string Image = "mcr.microsoft.com/mssql/server:2025-latest";
@@ -42,9 +42,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             _sql = new MsSqlBuilder(Image).Build();
             await _sql.StartAsync();
         }
-        catch (DockerUnavailableException ex)
+        catch (DockerUnavailableException ex) when (Environment.GetEnvironmentVariable("CI") != "true")
         {
-            // Only a missing Docker skips; a broken image or setup must fail loudly.
+            // Only a missing Docker skips, and never on CI; a broken image or setup must fail loudly.
             SkipReason = $"Docker unavailable: {ex.Message}";
             return;
         }
