@@ -239,6 +239,32 @@ public sealed class TransferCustodyTests(ApiFactory factory)
         }
     }
 
+    /// <summary>
+    /// Bursts on one evidence at a time: duplicate requests, then a decision retried with one key alongside competing
+    /// decisions with others. Reads straddling a commit once answered 500 here; every answer must be a success or a 409.
+    /// </summary>
+    [Fact]
+    public async Task Bursts_of_duplicates_and_competing_decisions_never_fail_and_chains_stay_valid()
+    {
+        var api = await ApiAsync();
+        var statuses = new List<HttpStatusCode>();
+        for (var i = 0; i < 8; i++)
+        {
+            var (code, _, recipient) = FreeEvidence(20 + i);
+            var requestKey = Guid.NewGuid();
+            var requests = await Task.WhenAll(Enumerable.Range(0, 6).Select(_ => RequestAsync(api, code, recipient, "Carga", requestKey)));
+            statuses.AddRange(requests.Select(r => r.StatusCode));
+            var requested = await requests[0].Content.ReadFromJsonAsync<JsonElement>(Token);
+            var (id, etag) = (requested.GetProperty("transferId").GetInt64(), requested.GetProperty("etag").GetString()!);
+            var key = Guid.NewGuid();
+            var decisions = await Task.WhenAll(Enumerable.Range(0, 10).Select(n => DecideAsync(api, recipient, id, "accept", null, n < 7 ? key : Guid.NewGuid(), etag)));
+            statuses.AddRange(decisions.Select(r => r.StatusCode));
+            await AssertVerifiesAsync(api, code);
+        }
+        Assert.All(statuses, s => Assert.Contains(s, new[] { HttpStatusCode.OK, HttpStatusCode.Created, HttpStatusCode.Conflict }));
+        Assert.Equal(8 * 6, statuses.Count(s => s == HttpStatusCode.Created)); // every duplicate request replays
+    }
+
     private Task<WebApplicationFactory<Program>> ApiAsync() => factory.SeededApiAsync("EvidenceChainTransfers");
 
     /// <summary>The index-th evidence that is no fixture and has no pending transfer, its holder, and a custodian to send it to.</summary>

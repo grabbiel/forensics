@@ -15,6 +15,9 @@ namespace EvidenceChain.Infrastructure.Custody;
 /// <summary>
 /// Each write is one transaction under the retrying execution strategy: the transfer change, its signed event, the
 /// evidence head and the inbox projection, with the idempotency key and request fingerprint stored alongside.
+/// Every write first takes an update lock on its evidence's row, so writes to one evidence run one after another and
+/// everything read after the lock is the latest committed state. Clients still get optimistic concurrency: If-Match
+/// decides the 409, and no lock is held between a client's read and its write.
 /// </summary>
 internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing keys, TimeProvider clock) : ICustodyTransfers
 {
@@ -95,12 +98,14 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
     private async Task<TransferOutcome> RequestOnceAsync(TransferRequest request, Actor requester, Guid key, byte[] fingerprint, CancellationToken cancellationToken)
     {
         db.ChangeTracker.Clear(); // a retry starts from what is committed
-        if (await ReplayRequestAsync(requester, key, fingerprint, cancellationToken) is { } replay)
-            return replay;
+        var evidenceId = await db.Evidence.Where(e => e.Code == request.EvidenceCode).Select(e => (long?)e.EvidenceId).SingleOrDefaultAsync(cancellationToken)
+            ?? throw new InvalidRequestException("evidenceCode", "No evidence has that code.");
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var evidence = await db.Evidence.SingleOrDefaultAsync(e => e.Code == request.EvidenceCode, cancellationToken)
-            ?? throw new InvalidRequestException("evidenceCode", "No evidence has that code.");
+        var evidence = await LockEvidenceAsync(evidenceId, cancellationToken);
+        // After the lock: a duplicate sent in parallel waits here and then finds the first one's transfer.
+        if (await ReplayRequestAsync(requester, key, fingerprint, cancellationToken) is { } replay)
+            return replay;
         var recipient = await db.Users.AsNoTracking().SingleOrDefaultAsync(u => u.UserId == request.ToCustodianId, cancellationToken);
         if (recipient is not { Role: UserRole.Custodio })
             throw new InvalidRequestException("toCustodianId", "Send it to a user with the Custodio role.");
@@ -127,9 +132,13 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
         CancellationToken cancellationToken)
     {
         db.ChangeTracker.Clear();
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var transfer = await db.CustodyTransfers.SingleOrDefaultAsync(t => t.TransferId == transferId, cancellationToken)
+        var evidenceId = await db.CustodyTransfers.Where(t => t.TransferId == transferId).Select(t => (long?)t.EvidenceId).SingleOrDefaultAsync(cancellationToken)
             ?? throw new InvalidOperationException($"Transfer {transferId} does not exist.");
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        // The evidence first, as requests do; then the transfer, which no other write can be changing now.
+        var evidence = await LockEvidenceAsync(evidenceId, cancellationToken);
+        var transfer = await db.CustodyTransfers.SingleAsync(t => t.TransferId == transferId, cancellationToken);
 
         // A retry of a decision already made: answer as it did, whatever version the retry names.
         if (transfer.DecisionKey == key)
@@ -141,7 +150,6 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
         // And the save only matches the row at the version the client read.
         db.Entry(transfer).Property(t => t.RowVersion).OriginalValue = expectedVersion;
 
-        var evidence = await db.Evidence.SingleAsync(e => e.EvidenceId == transfer.EvidenceId, cancellationToken);
         var now = clock.GetUtcNow().UtcDateTime;
         if (command == TransferCommand.Accept)
             transfer.Accept(evidence, decider, now, notes, key, fingerprint);
@@ -179,6 +187,14 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
         return await db.CustodyTransfers.AsNoTracking()
             .SingleOrDefaultAsync(t => t.EvidenceId == evidenceId && t.Status == TransferStatus.Pending, cancellationToken);
     }
+
+    /// <summary>
+    /// The evidence row, tracked, under an update lock held to the end of the transaction: a second write to the same
+    /// evidence waits here until the first commits. Plain reads are not blocked (they read row versions). By primary
+    /// key, so the lock is one row.
+    /// </summary>
+    private Task<Evidence> LockEvidenceAsync(long evidenceId, CancellationToken cancellationToken) =>
+        db.Evidence.FromSql($"SELECT * FROM dbo.Evidence WITH (UPDLOCK, ROWLOCK) WHERE EvidenceId = {evidenceId}").SingleAsync(cancellationToken);
 
     private Task<EvidenceInboxRow> InboxRowAsync(Evidence evidence, CancellationToken cancellationToken) =>
         db.EvidenceInbox.SingleAsync(r => r.EvidenceId == evidence.EvidenceId, cancellationToken);
