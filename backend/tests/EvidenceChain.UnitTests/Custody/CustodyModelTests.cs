@@ -61,7 +61,7 @@ public sealed class CustodyModelTests
 
         Assert.Equal((TransferStatus.Accepted, 5), (transfer.Status, evidence.CurrentCustodianId));
         var second = Assert.Throws<InvalidTransitionException>(() => transfer.Reject(evidence, Recipient, Requested.AddHours(2), "Tarde", Guid.CreateVersion7(), Hash(3)));
-        Assert.Equal((TransferStatus.Accepted, 5, Requested.AddHours(1)), (second.CurrentStatus!.Value, second.ActedById!.Value, second.ActedAtUtc!.Value)); // what the 409 reports
+        Assert.Equal((TransferStatus.Accepted, 5, Requested.AddHours(1)), (second.Transfer!.Status, second.Transfer.DecidedById!.Value, second.Transfer.DecidedAtUtc!.Value)); // what the 409 reports
     }
 
     [Fact]

@@ -98,7 +98,4 @@ public sealed class Evidence
 
     /// <summary>Moves custody to the recipient of an accepted transfer.</summary>
     public void HandOverTo(int custodianId) => CurrentCustodianId = custodianId;
-
-    /// <summary>Flags the evidence as one of the documented fixtures.</summary>
-    public void MarkAsDemoFixture() => IsDemoFixture = true;
 }

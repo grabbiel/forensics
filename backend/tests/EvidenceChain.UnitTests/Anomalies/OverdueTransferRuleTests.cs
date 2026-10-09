@@ -21,7 +21,6 @@ public sealed class OverdueTransferRuleTests
         var finding = rule.Evaluate(Pending());
 
         Assert.Equal(expected, finding?.Severity);
-        Assert.Equal(expected is not null, rule.IsSatisfiedBy(Pending()));
         if (finding is not null)
             Assert.Equal(TransferAnomalyKind.Overdue, finding.Kind);
     }

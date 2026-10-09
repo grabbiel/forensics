@@ -94,6 +94,5 @@ internal sealed class CustodyTransferConfiguration : IEntityTypeConfiguration<Cu
         builder.HasIndex(t => new { t.EvidenceId, t.TransferId }).HasDatabaseName("IX_CustodyTransfers_Evidence");
         builder.HasIndex(t => new { t.RequestedById, t.ClientRequestId }).IsUnique().HasDatabaseName("UX_CustodyTransfers_RequestKey");
         builder.HasIndex(t => new { t.DecidedById, t.DecisionKey }).IsUnique().HasFilter("[DecisionKey] IS NOT NULL").HasDatabaseName("UX_CustodyTransfers_DecisionKey");
-        builder.HasIndex(t => new { t.ToCustodianId, t.Status }).HasDatabaseName("IX_CustodyTransfers_RecipientStatus");
     }
 }

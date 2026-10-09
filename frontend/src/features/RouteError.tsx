@@ -3,7 +3,7 @@ import { isRouteErrorResponse, Link, useRevalidator, useRouteError } from 'react
 import { ApiError } from '../api/client'
 
 /** What a route calls a 404, e.g. a missing evidence; other routes say the page is not there. */
-export interface NotFoundText {
+interface NotFoundText {
   title: string
   detail: string
 }

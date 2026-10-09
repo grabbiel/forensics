@@ -14,11 +14,7 @@ public sealed class EvidenceInboxRow
 
     public string TypeCode { get; set; } = string.Empty;
 
-    public DateOnly CodeDateUtc { get; set; }
-
     public string Description { get; set; } = string.Empty;
-
-    public DateTime RegisteredAtUtc { get; set; }
 
     public int CurrentCustodianId { get; set; }
 

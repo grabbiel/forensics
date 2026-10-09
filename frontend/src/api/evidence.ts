@@ -6,7 +6,7 @@ export type EvidenceType = (typeof EVIDENCE_TYPES)[number]
 export const INTEGRITY_STATUSES = ['Unverified', 'Valid', 'Invalid'] as const
 export type IntegrityStatus = (typeof INTEGRITY_STATUSES)[number]
 
-export type InboxSort = 'lastEventAt:desc' | 'lastEventAt:asc'
+type InboxSort = 'lastEventAt:desc' | 'lastEventAt:asc'
 
 /** A user as the API names them. */
 export interface PersonRef {
@@ -83,7 +83,7 @@ export interface EvidenceDetail {
   anomalies: Anomaly[]
 }
 
-export type CustodyEventKind = 'EvidenceRegistered' | 'TransferRequested' | 'TransferAccepted' | 'TransferRejected'
+type CustodyEventKind = 'EvidenceRegistered' | 'TransferRequested' | 'TransferAccepted' | 'TransferRejected'
 
 export interface ChainEvent {
   eventId: number

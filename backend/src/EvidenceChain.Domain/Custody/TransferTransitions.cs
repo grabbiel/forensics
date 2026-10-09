@@ -26,10 +26,7 @@ public enum TransitionError
 }
 
 /// <summary>Outcome of <see cref="TransferTransitions.Decide"/>: the next status, or why not.</summary>
-public readonly record struct TransitionDecision(TransferStatus? Next, TransitionError Error)
-{
-    public bool IsAllowed => Error == TransitionError.None;
-}
+public readonly record struct TransitionDecision(TransferStatus? Next, TransitionError Error);
 
 /// <summary>
 /// The transfer state machine as one pure table. Investigadores request; only the designated recipient,
@@ -62,10 +59,8 @@ public static class TransferTransitions
 }
 
 /// <summary>A transfer command refused by <see cref="TransferTransitions"/>.</summary>
-public abstract class TransferRuleException(TransitionError error, string message) : Exception(message)
+public abstract class TransferRuleException(string message) : Exception(message)
 {
-    public TransitionError Error { get; } = error;
-
     /// <summary>Throws the exception matching a refused decision.</summary>
     internal static void ThrowIfRefused(TransitionDecision decision, TransferCommand command, UserRole role, CustodyTransfer? transfer)
     {
@@ -85,30 +80,21 @@ public abstract class TransferRuleException(TransitionError error, string messag
 
 /// <summary>The role never issues the command.</summary>
 public sealed class RoleNotAllowedException(UserRole role, TransferCommand command)
-    : TransferRuleException(TransitionError.RoleNotAllowed, $"A {role} cannot {command.ToString().ToLowerInvariant()} a transfer.")
-{
-    public UserRole Role { get; } = role;
-}
+    : TransferRuleException($"A {role} cannot {command.ToString().ToLowerInvariant()} a transfer.");
 
 /// <summary>Someone other than the recipient tried to decide.</summary>
 public sealed class NotRecipientException(TransferCommand command)
-    : TransferRuleException(TransitionError.NotRecipient, $"Only the recipient can {command.ToString().ToLowerInvariant()} this transfer.");
+    : TransferRuleException($"Only the recipient can {command.ToString().ToLowerInvariant()} this transfer.");
 
 /// <summary>
-/// The command does not fit the current state. Carries who acted and when, so the API can answer 409
-/// with what actually happened (the second tab of the two-tab demo).
+/// The command does not fit the current state. Carries the transfer as it is now, from which the API builds a 409
+/// that says what actually happened (the second tab of the two-tab demo).
 /// </summary>
 public sealed class InvalidTransitionException(TransferCommand command, CustodyTransfer? transfer)
-    : TransferRuleException(TransitionError.InvalidTransition, Describe(command, transfer))
+    : TransferRuleException(Describe(command, transfer))
 {
     /// <summary>The transfer acted on, or the one already pending when a request is refused.</summary>
     public CustodyTransfer? Transfer { get; } = transfer;
-
-    public TransferStatus? CurrentStatus { get; } = transfer?.Status;
-
-    public int? ActedById { get; } = transfer?.DecidedById;
-
-    public DateTime? ActedAtUtc { get; } = transfer?.DecidedAtUtc;
 
     private static string Describe(TransferCommand command, CustodyTransfer? transfer) => (command, transfer) switch
     {

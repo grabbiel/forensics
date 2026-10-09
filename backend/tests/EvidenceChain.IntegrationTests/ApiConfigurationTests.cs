@@ -1,5 +1,4 @@
 using EvidenceChain.Domain.Anomalies;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace EvidenceChain.IntegrationTests;

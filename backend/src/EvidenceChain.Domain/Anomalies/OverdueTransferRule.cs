@@ -41,9 +41,6 @@ public sealed class OverdueTransferRule
     /// <summary>How long a recipient has to accept.</summary>
     public TimeSpan Deadline { get; }
 
-    /// <summary>True when <see cref="Evaluate"/> finds something.</summary>
-    public bool IsSatisfiedBy(CustodyTransfer transfer) => Evaluate(transfer) is not null;
-
     /// <summary>The finding for <paramref name="transfer"/>, or null when it met the deadline (or was rejected).</summary>
     public TransferAnomaly? Evaluate(CustodyTransfer transfer)
     {
