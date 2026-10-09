@@ -5,7 +5,7 @@ using EvidenceChain.IntegrationTests.Probes;
 
 namespace EvidenceChain.IntegrationTests;
 
-/// <summary>Every error a client can act on is problem+json with a stable type (roadmap §3.1).</summary>
+/// <summary>Every error a client can act on is problem+json with a stable type.</summary>
 [Collection(nameof(SqlCollection))]
 public sealed class ProblemDetailsTests(ApiFactory factory)
 {

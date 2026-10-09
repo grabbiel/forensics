@@ -11,7 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace EvidenceChain.IntegrationTests;
 
-/// <summary>Journey 1 over the seeded reference dataset: inbox, detail, timeline and verification (roadmap §3.2).</summary>
+/// <summary>Journey 1 over the seeded reference dataset: inbox, detail, timeline and verification.</summary>
 [Collection(nameof(SqlCollection))]
 public sealed class ReviewEvidenceTests(ApiFactory factory)
 {

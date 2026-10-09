@@ -10,8 +10,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 namespace EvidenceChain.IntegrationTests;
 
 /// <summary>
-/// Journey 2 over a writable copy of the reference dataset, served as the app login (roadmap §3.3), including the §3.4
-/// idempotency and concurrency checks. Each test works on its own evidence, one with no pending transfer.
+/// Journey 2 over a writable copy of the reference dataset, served as the app login, including the idempotency and
+/// concurrency checks. Each test works on its own evidence, one with no pending transfer.
 /// </summary>
 [Collection(nameof(SqlCollection))]
 public sealed class TransferCustodyTests(ApiFactory factory)

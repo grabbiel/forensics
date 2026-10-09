@@ -3,7 +3,7 @@ using EvidenceChain.Domain.Custody;
 namespace EvidenceChain.Infrastructure.Persistence.ReadModels;
 
 /// <summary>
-/// A4 inbox projection: one denormalised row per evidence, updated in the same transaction as every write,
+/// EvidenceInbox projection: one denormalised row per evidence, updated in the same transaction as every write,
 /// so the inbox pages with keyset seeks and no joins.
 /// </summary>
 public sealed class EvidenceInboxRow

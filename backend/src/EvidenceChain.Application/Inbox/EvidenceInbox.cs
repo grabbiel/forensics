@@ -41,7 +41,7 @@ public sealed record EvidenceSummary(
 /// <summary>A page of rows and, when more follow, where the next page starts.</summary>
 public sealed record InboxPage(IReadOnlyList<EvidenceSummary> Items, InboxPosition? Next);
 
-/// <summary>Read side of the inbox, over the A4 projection.</summary>
+/// <summary>Read side of the inbox, over the EvidenceInbox projection.</summary>
 public interface IEvidenceInboxQuery
 {
     Task<InboxPage> ListAsync(EvidenceInboxFilter filter, CancellationToken cancellationToken);

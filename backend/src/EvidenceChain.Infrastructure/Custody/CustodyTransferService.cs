@@ -199,7 +199,7 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
     private Task<EvidenceInboxRow> InboxRowAsync(Evidence evidence, CancellationToken cancellationToken) =>
         db.EvidenceInbox.SingleAsync(r => r.EvidenceId == evidence.EvidenceId, cancellationToken);
 
-    /// <summary>The A4 projection follows the write in the same transaction.</summary>
+    /// <summary>The EvidenceInbox projection follows the write in the same transaction.</summary>
     private static void Project(EvidenceInboxRow inbox, Evidence evidence, CustodyTransfer transfer, DateTime occurredAtUtc, PeopleIndex people)
     {
         inbox.EventCount = evidence.EventCount;

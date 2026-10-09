@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# One-shot "migrate-and-seed" image (roadmap §1.2b, §2.5). Build context: backend/.
+# One-shot "migrate-and-seed" image for the compose migrate service. Build context: backend/.
 # Runs the EF migration bundle, prepares the local database, loads data, then exits.
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build

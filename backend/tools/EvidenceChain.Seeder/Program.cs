@@ -3,7 +3,7 @@ using EvidenceChain.Seeder;
 using EvidenceChain.SyntheticData;
 using Microsoft.Data.SqlClient;
 
-// Evidence Chain seeder: prepare the database, export or load the synthetic dataset (roadmap §2.3-§2.5).
+// Evidence Chain seeder: prepare the database, export or load the synthetic dataset.
 using var cancellation = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
 

@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace EvidenceChain.Infrastructure.Inbox;
 
 /// <summary>
-/// Keyset pages over the A4 projection: the seek predicate is written out (LastEventAtUtc, then EvidenceId) so SQL
+/// Keyset pages over the EvidenceInbox projection: the seek predicate is written out (LastEventAtUtc, then EvidenceId) so SQL
 /// Server can seek an index ending in (LastEventAtUtc DESC, EvidenceId DESC) instead of counting skipped rows.
 /// </summary>
 internal sealed class EvidenceInboxQuery(AppDbContext db) : IEvidenceInboxQuery

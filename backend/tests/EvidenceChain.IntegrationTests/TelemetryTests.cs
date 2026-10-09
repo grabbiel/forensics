@@ -12,7 +12,7 @@ using OpenTelemetry.Trace;
 
 namespace EvidenceChain.IntegrationTests;
 
-/// <summary>The verify-failure counter and how requests are reported (roadmap §3.1).</summary>
+/// <summary>The verify-failure counter and how requests are reported.</summary>
 [Collection(nameof(SqlCollection))]
 public sealed class TelemetryTests(ApiFactory factory)
 {
