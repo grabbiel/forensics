@@ -2,5 +2,6 @@
   <Folder Name="/src/">
     <Project Path="src/EvidenceChain.Application/EvidenceChain.Application.csproj" />
     <Project Path="src/EvidenceChain.Domain/EvidenceChain.Domain.csproj" />
+    <Project Path="src/EvidenceChain.Infrastructure/EvidenceChain.Infrastructure.csproj" />
   </Folder>
 </Solution>

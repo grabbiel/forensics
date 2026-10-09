@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- No ASP.NET dependency, so the Seeder can run on the plain .NET runtime image. -->
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EvidenceChain.Application\EvidenceChain.Application.csproj" />
+  </ItemGroup>
+
+</Project>
