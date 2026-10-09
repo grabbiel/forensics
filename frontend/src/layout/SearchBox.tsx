@@ -29,7 +29,14 @@ export function SearchBox() {
     window.clearTimeout(timer.current)
     if (q === written.current) return
     written.current = q
-    updateSearch((params) => (q ? params.set('q', q) : params.delete('q')), { replace })
+    updateSearch(
+      (params) => {
+        if (q) params.set('q', q)
+        else params.delete('q')
+        params.delete('cursor') // a new search starts on the first page
+      },
+      { replace },
+    )
   }
 
   function onChange(event: ChangeEvent<HTMLInputElement>) {

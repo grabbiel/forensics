@@ -29,6 +29,8 @@
   --on-accent: #fcfcfd;
   --focus: #1a73e8;
   --danger: #c5221f;
+  --warning: #b05c00;
+  --success: #16774a;
   --search-shadow: 0 4px 14px rgb(31 158 98 / 0.1);
 
   --radius-pill: 999px;
@@ -63,6 +65,8 @@
     --on-accent: #0d2419;
     --focus: #8ab4f8;
     --danger: #f28b82;
+    --warning: #f6b26b;
+    --success: #3dc98a;
     --search-shadow: none;
   }
 }
@@ -781,6 +785,94 @@ svg {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- Integrity badge ---- */
+
+.integrity {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--fill-2);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.integrity--valid {
+  background: var(--accent-soft);
+  color: var(--success);
+}
+
+.integrity--invalid {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  color: var(--danger);
+}
+
+/* ---- Inbox filters, sort and pages ---- */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 0 20px 14px;
+}
+
+.filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter__label {
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.filter__select {
+  height: 32px;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sort-button:hover {
+  color: var(--text);
+}
+
+.pending-hint {
+  display: block;
+  color: var(--warning);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--line-soft);
+}
+
 /* ---- Skeleton (first load) ---- */
 
 .skeleton {
@@ -875,6 +967,7 @@ svg {
     grid-template-columns: auto auto 1fr;
     grid-template-areas:
       'desc desc desc'
+      'custodian custodian integrity'
       'code type date';
     align-items: center;
     gap: 8px 10px;
@@ -908,6 +1001,21 @@ svg {
 
   .table__type {
     grid-area: type;
+  }
+
+  .table__custodian {
+    grid-area: custodian;
+    color: var(--text-2);
+    font-size: 13px;
+  }
+
+  .table__integrity {
+    grid-area: integrity;
+    justify-self: end;
+  }
+
+  .filters {
+    padding-inline: 16px;
   }
 
   .table__num {
