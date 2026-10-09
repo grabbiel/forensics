@@ -46,8 +46,12 @@ export function InboxPage() {
     setFilter('sort', pending.sort ? undefined : 'lastEventAt:asc')
   }
 
-  /** Moves between pages; focus goes to the heading because the clicked button may not exist on the new page. */
+  /**
+   * Moves between pages; focus goes to the heading because the clicked button may not exist on the new page. Not while
+   * a load runs: the cursor shown belongs to the listing being replaced.
+   */
   function goToPage(cursor: string | undefined) {
+    if (loading) return
     updateSearch((params) => (cursor ? params.set('cursor', cursor) : params.delete('cursor')))
     titleRef.current?.focus()
   }
@@ -92,7 +96,12 @@ export function InboxPage() {
           label="Custodio"
           value={pending.custodianId ? String(pending.custodianId) : ''}
           onChange={(value) => setFilter('custodianId', value)}
-          options={[{ value: '', label: 'Todos' }, ...custodians.map((c: Person) => ({ value: String(c.id), label: c.displayName }))]}
+          options={[
+            { value: '', label: 'Todos' },
+            ...custodians.map((c: Person) => ({ value: String(c.id), label: c.displayName })),
+            // A URL may name someone not in the list; say so rather than show "Todos" while filtering.
+            ...(pending.custodianId && !custodianName(pending.custodianId) ? [{ value: String(pending.custodianId), label: `Custodio desconocido (#${pending.custodianId})` }] : []),
+          ]}
         />
         <Select
           label="Integridad"
@@ -108,11 +117,16 @@ export function InboxPage() {
           {!loading && (filter.cursor || nextCursor) && <> en esta página</>}
           {!loading && filter.q && <> para «{filter.q}»</>}
         </p>
-        {/* Announces only settled results, never the intermediate "loading". */}
+        {/* Says when a load starts and what it found. */}
         <p className="visually-hidden" role="status">
-          {loading ? '' : describeResults(rows.length, filter, { custodian: filter.custodianId ? custodianName(filter.custodianId) : undefined, more: Boolean(nextCursor) })}
+          {loading ? 'Cargando evidencias…' : describeResults(rows.length, filter, { custodian: filter.custodianId ? custodianName(filter.custodianId) : undefined, more: Boolean(nextCursor) })}
         </p>
-        <span className="subbar__sort">{oldestFirst ? 'Más antiguos primero' : 'Más recientes primero'}</span>
+        {/* Also the only sort control on phones, where the table header is hidden. */}
+        <button type="button" className="subbar__sort" onClick={toggleSort}>
+          {oldestFirst ? <ArrowUp size={14} aria-hidden="true" /> : <ArrowDown size={14} aria-hidden="true" />}
+          {oldestFirst ? 'Más antiguos primero' : 'Más recientes primero'}
+          <span className="visually-hidden">, cambiar el orden</span>
+        </button>
       </div>
 
       <div className="results" aria-busy={loading}>
@@ -126,12 +140,12 @@ export function InboxPage() {
       {(filter.cursor || nextCursor) && (
         <nav className="pager" aria-label="Páginas de la bandeja">
           {filter.cursor && (
-            <button type="button" className="button button--ghost" onClick={() => goToPage(undefined)}>
+            <button type="button" className="button button--ghost" aria-disabled={loading} onClick={() => goToPage(undefined)}>
               Primera página
             </button>
           )}
           {nextCursor && (
-            <button type="button" className="button button--ghost" onClick={() => goToPage(nextCursor)}>
+            <button type="button" className="button button--ghost" aria-disabled={loading} onClick={() => goToPage(nextCursor)}>
               Página siguiente
               <CaretRight size={16} aria-hidden="true" />
             </button>

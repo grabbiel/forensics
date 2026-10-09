@@ -29,7 +29,7 @@
   --on-accent: #fcfcfd;
   --focus: #1a73e8;
   --danger: #c5221f;
-  --warning: #b05c00;
+  --warning: #a35400;
   --success: #16774a;
   --search-shadow: 0 4px 14px rgb(31 158 98 / 0.1);
 
@@ -363,8 +363,18 @@ svg {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--text-3);
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.subbar__sort:hover {
+  color: var(--text);
 }
 
 /* Indeterminate bar along the box's top edge while a loader runs. */
@@ -787,8 +797,14 @@ svg {
   box-shadow: inset 3px 0 0 var(--danger);
 }
 
-.timeline__item:target {
+/* Reached from the verification's link, which moves focus here. */
+.timeline__item:focus {
+  outline: none;
+}
+
+.timeline__item:focus-visible {
   outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .timeline__seq {
@@ -824,6 +840,11 @@ svg {
 .timeline__mac {
   color: var(--text-3);
   font-size: 12px;
+}
+
+/* --text-3 falls short of 4.5:1 on the red tint. */
+.timeline__item--invalid .timeline__mac {
+  color: var(--text-2);
 }
 
 .timeline__mac code,
@@ -884,6 +905,7 @@ svg {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  max-width: 100%;
 }
 
 .filter__label {
@@ -893,6 +915,8 @@ svg {
 }
 
 .filter__select {
+  min-width: 0;
+  max-width: 100%;
   height: 32px;
   padding: 0 28px 0 10px;
   border: 1px solid var(--line);
@@ -941,10 +965,6 @@ svg {
   align-items: center;
   gap: 8px 14px;
   padding: 0 20px 16px;
-}
-
-.verify__outcome:empty {
-  display: none;
 }
 
 .verify__valid,
@@ -1121,9 +1141,12 @@ svg {
     padding: 16px 16px 12px;
   }
 
+  /* The count and the sort control take a line each when both do not fit. */
   .subbar {
+    flex-wrap: wrap;
+    gap: 0 12px;
     margin: 0 16px;
-    padding: 0 12px;
+    padding: 6px 12px;
   }
 
   .table-wrap {
@@ -1143,9 +1166,33 @@ svg {
     clip-path: inset(50%);
   }
 
-  .table tr {
+  /* The summary bar sorts on phones; the header's own button still shows when the keyboard reaches it. */
+  .table thead:focus-within {
+    display: block;
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+  }
+
+  .table thead:focus-within tr {
+    display: flex;
+    justify-content: flex-end;
+    padding: 8px 16px;
+  }
+
+  .table thead:focus-within th:not([aria-sort]) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .table tbody tr {
     display: grid;
-    grid-template-columns: auto auto 1fr;
+    grid-template-columns: auto auto minmax(0, 1fr);
     grid-template-areas:
       'desc desc desc'
       'custodian custodian integrity'
@@ -1221,6 +1268,7 @@ svg {
     grid-area: date;
     justify-self: end;
     font-size: 12px;
+    white-space: normal;
   }
 
   .skeleton-row {

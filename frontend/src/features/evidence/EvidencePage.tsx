@@ -1,4 +1,5 @@
 import { ArrowLeft, ArrowsLeftRight, CheckCircle, Hourglass, ShieldCheck, Warning, WarningOctagon } from '@phosphor-icons/react'
+import { Fragment, useState, type MouseEvent } from 'react'
 import { Link, useFetcher, useLoaderData } from 'react-router'
 import type { Anomaly, ChainEvent, EvidenceDetail, TransferView, VerificationReport } from '../../api/evidence'
 import { IntegrityBadge } from '../../components/IntegrityBadge'
@@ -11,7 +12,10 @@ export function EvidencePage() {
   const { detail, chain } = useLoaderData<typeof evidenceLoader>()
   const verify = useFetcher<VerifyResult>()
   const verifying = verify.state !== 'idle'
-  const report = verify.data?.ok ? verify.data.report : undefined
+  // The last report survives a later attempt that fails to reach the API; the code check drops another evidence's.
+  const [lastReport, setLastReport] = useState<VerificationReport>()
+  if (verify.data?.ok && verify.data.report !== lastReport) setLastReport(verify.data.report)
+  const report = lastReport?.code === detail.code ? lastReport : undefined
   // A verification just run speaks for the chain until the next load records it.
   const status = report ? (report.valid ? 'Valid' : 'Invalid') : detail.integrity.status
 
@@ -39,9 +43,9 @@ export function EvidencePage() {
           onClick={() => verifying || verify.load(`/evidence/${encodeURIComponent(detail.code)}/verify`)}
         >
           <ShieldCheck size={18} aria-hidden="true" />
-          {verifying ? 'Verificando…' : 'Verificar cadena'}
+          Verificar cadena
         </button>
-        <VerifyOutcome result={verify.data} verifying={verifying} />
+        <VerifyOutcome result={verify.data} verifying={verifying} events={chain.events} />
       </div>
 
       {detail.anomalies.length > 0 && <Anomalies anomalies={detail.anomalies} />}
@@ -52,8 +56,11 @@ export function EvidencePage() {
   )
 }
 
-/** What the verification found, announced politely; the first invalid event links to its place in the timeline. */
-function VerifyOutcome({ result, verifying }: { result: VerifyResult | undefined; verifying: boolean }) {
+/**
+ * What the verification found, announced politely. The region is always in the page so the first result is read
+ * too; the first invalid event links to its place in the timeline.
+ */
+function VerifyOutcome({ result, verifying, events }: { result: VerifyResult | undefined; verifying: boolean; events: ChainEvent[] }) {
   return (
     <div className="verify__outcome" role="status">
       {verifying ? (
@@ -65,26 +72,48 @@ function VerifyOutcome({ result, verifying }: { result: VerifyResult | undefined
       ) : result.report.valid ? (
         <span className="verify__valid">
           <CheckCircle size={18} weight="bold" aria-hidden="true" />
-          Cadena íntegra: los {result.report.eventCount} eventos y el contenido coinciden con lo firmado.
+          Cadena íntegra: {result.report.eventCount === 1 ? 'el evento' : `los ${result.report.eventCount} eventos`} y el contenido
+          coinciden con lo firmado.
         </span>
       ) : (
-        <InvalidOutcome report={result.report} />
+        <InvalidOutcome report={result.report} events={events} />
       )}
     </div>
   )
 }
 
-function InvalidOutcome({ report }: { report: VerificationReport }) {
+function InvalidOutcome({ report, events }: { report: VerificationReport; events: ChainEvent[] }) {
   const invalid = report.firstInvalid!
+  const label = `evento #${invalid.seq}`
+  // The timeline has a row for this seq when the event is there or, for a gap, its placeholder is; a chain read
+  // before newer events were added may have neither.
+  const inTimeline = invalid.reason === SEQUENCE_GAP || events.some((event) => event.eventId === invalid.eventId)
   return (
     <span className="verify__invalid">
       <WarningOctagon size={18} weight="bold" aria-hidden="true" />
       <span>
-        Cadena alterada en el <a href={`#event-${invalid.seq}`}>evento #{invalid.seq}</a>: {invalid.detail}{' '}
-        <code className="reason">{invalid.reason}</code>
+        Cadena alterada en el{' '}
+        {inTimeline ? (
+          <a href={`#event-${invalid.seq}`} onClick={focusTarget}>
+            {label}
+          </a>
+        ) : (
+          label
+        )}
+        : {invalid.detail} <code className="reason">{invalid.reason}</code>
       </span>
     </span>
   )
+}
+
+const SEQUENCE_GAP = 'SEQUENCE_GAP'
+
+/** Moves focus, not only the scroll position, to the timeline row so reading continues from there. */
+function focusTarget(event: MouseEvent<HTMLAnchorElement>) {
+  const target = document.getElementById(event.currentTarget.hash.slice(1))
+  if (!target) return
+  event.preventDefault()
+  target.focus()
 }
 
 /** Overdue-rule findings: icon, severity in words and the rule's own explanation. */
@@ -167,9 +196,26 @@ function PendingTransfer({ transfer }: { transfer: TransferView }) {
   )
 }
 
-/** The chain in order. After a verification, events up to the last good one are ticked and the first bad one is marked. */
+/**
+ * The chain in order. After a verification, events up to the last good one are ticked and the first bad one is
+ * marked; a missing event gets a row of its own where it should have been.
+ */
 function Timeline({ events, report }: { events: ChainEvent[]; report: VerificationReport | undefined }) {
-  const invalidSeq = report?.firstInvalid?.seq
+  const firstInvalid = report?.firstInvalid ?? undefined
+  const gap = firstInvalid?.reason === SEQUENCE_GAP ? firstInvalid : undefined
+  const gapRow = gap && (
+    <li key="gap" id={`event-${gap.seq}`} className="timeline__item timeline__item--invalid timeline__item--gap" tabIndex={-1}>
+      <span className="timeline__seq">#{gap.seq}</span>
+      <div className="timeline__body">
+        <p className="timeline__what">
+          Falta el evento #{gap.seq}
+          <strong className="timeline__flag"> · Primer evento inválido</strong>
+        </p>
+      </div>
+    </li>
+  )
+  // The gap is reported against the event found in its place (none when the chain is empty).
+  const gapBefore = gap?.eventId ?? undefined
   return (
     <section className="timeline" aria-labelledby="timeline-title">
       <h2 id="timeline-title" className="section-title">
@@ -177,10 +223,13 @@ function Timeline({ events, report }: { events: ChainEvent[]; report: Verificati
       </h2>
       <ol className="timeline__list">
         {events.map((event) => {
-          const invalid = event.seq === invalidSeq
+          // By event id: the seq a report names may be one the chain lacks.
+          const invalid = !gap && event.eventId === firstInvalid?.eventId
           const verified = report !== undefined && event.seq <= report.verifiedThroughSeq
           return (
-            <li key={event.eventId} id={`event-${event.seq}`} className={`timeline__item${invalid ? ' timeline__item--invalid' : ''}`}>
+            <Fragment key={event.eventId}>
+              {event.eventId === gapBefore && gapRow}
+              <li id={`event-${event.seq}`} className={`timeline__item${invalid ? ' timeline__item--invalid' : ''}`} tabIndex={-1}>
               <span className="timeline__seq">#{event.seq}</span>
               <div className="timeline__body">
                 <p className="timeline__what">
@@ -200,9 +249,11 @@ function Timeline({ events, report }: { events: ChainEvent[]; report: Verificati
                 </p>
               </div>
               <time dateTime={event.occurredAtUtc}>{formatUtcDateTime(event.occurredAtUtc)}</time>
-            </li>
+              </li>
+            </Fragment>
           )
         })}
+        {gap && !events.some((event) => event.eventId === gapBefore) && gapRow}
       </ol>
     </section>
   )

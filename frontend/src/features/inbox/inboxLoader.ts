@@ -1,6 +1,7 @@
-import type { LoaderFunctionArgs } from 'react-router'
+import { redirect, type LoaderFunctionArgs } from 'react-router'
+import { ApiError } from '../../api/client'
 import { isEvidenceType, isIntegrityStatus, listEvidence, type EvidenceFilter } from '../../api/evidence'
-import { listPeople } from '../../api/people'
+import { listPeople, type Person } from '../../api/people'
 import { signedIn } from '../../auth/guard'
 
 /** Reads the filter from URL params, the single source of truth. Anything unknown is ignored. */
@@ -21,12 +22,24 @@ export function readFilter(params: URLSearchParams): EvidenceFilter {
 
 /**
  * Loads one inbox page and the custodians the filter can name. request.signal aborts both when a newer navigation
- * starts, so a stale response never renders.
+ * starts, so a stale response never renders. A cursor the API refuses (an old link, or one from another filter)
+ * sends the user to the first page of the same listing instead of an error that retrying cannot fix.
  */
 export function inboxLoader({ request }: LoaderFunctionArgs) {
-  const filter = readFilter(new URL(request.url).searchParams)
+  const url = new URL(request.url)
+  const filter = readFilter(url.searchParams)
   return signedIn(request, async () => {
-    const [page, custodians] = await Promise.all([listEvidence(filter, request.signal), listPeople('Custodio', request.signal)])
-    return { rows: page.items, nextCursor: page.nextCursor, filter, custodians }
+    // Without the custodian list the filter offers only "Todos"; the inbox itself still loads.
+    const custodians = listPeople('Custodio', request.signal).catch((): Person[] => [])
+    try {
+      const page = await listEvidence(filter, request.signal)
+      return { rows: page.items, nextCursor: page.nextCursor, filter, custodians: await custodians }
+    } catch (error) {
+      if (filter.cursor && error instanceof ApiError && error.status === 400 && error.problem?.errors?.cursor) {
+        url.searchParams.delete('cursor')
+        throw redirect(`${url.pathname}${url.search}`)
+      }
+      throw error
+    }
   })
 }

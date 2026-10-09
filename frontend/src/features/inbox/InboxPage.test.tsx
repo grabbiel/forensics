@@ -28,8 +28,8 @@ const rows: EvidenceSummary[] = [
 const page = (items: EvidenceSummary[], nextCursor: string | null = null): InboxPage => ({ items, nextCursor })
 
 const custodians = [
-  { id: 4, userName: 'custodio.demo', displayName: 'Diego Salas', role: 'Custodio' },
-  { id: 5, userName: 'nuria.paredes', displayName: 'Nuria Paredes', role: 'Custodio' },
+  { id: 4, displayName: 'Diego Salas', role: 'Custodio' },
+  { id: 5, displayName: 'Nuria Paredes', role: 'Custodio' },
 ]
 
 /** A JSON (or problem+json) response. */
@@ -118,14 +118,14 @@ describe('InboxPage', () => {
     await waitFor(() => expect(router.state.location.search).toBe('?type=LOG&q=vpn'))
   })
 
-  it('explains an empty result and clears the filters, moving focus to the heading', async () => {
+  it('explains an empty result and clears the filters but not the sort, moving focus to the heading', async () => {
     stubFetch(200, page([]))
-    const router = renderAt('/?q=zzz')
+    const router = renderAt('/?q=zzz&sort=lastEventAt%3Aasc&cursor=abc')
 
     expect(await screen.findByText('Sin resultados para «zzz».')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Quitar filtros' }))
 
-    await waitFor(() => expect(router.state.location.search).toBe(''))
+    await waitFor(() => expect(router.state.location.search).toBe('?sort=lastEventAt%3Aasc'))
     expect(screen.getByRole('heading', { name: 'Bandeja de evidencias' })).toHaveFocus()
   })
 
@@ -192,8 +192,18 @@ describe('InboxPage', () => {
 
     await waitFor(() => expect(router.state.location.search).toBe('?sort=lastEventAt%3Aasc'))
     expect(inboxCalls(fetchMock).at(-1)).toBe('/api/v1/evidence?sort=lastEventAt%3Aasc')
-    expect(await screen.findByText('Más antiguos primero')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Más antiguos primero, cambiar el orden' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: /Último evento/ })).toHaveAttribute('aria-sort', 'ascending')
+  })
+
+  it('also sorts from the summary bar, the control phones show', async () => {
+    stubFetch(200, page(rows))
+    const router = renderAt('/?type=LOG')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Más recientes primero, cambiar el orden' }))
+
+    await waitFor(() => expect(router.state.location.search).toBe('?type=LOG&sort=lastEventAt%3Aasc'))
+    expect(await screen.findByRole('button', { name: 'Más antiguos primero, cambiar el orden' })).toBeInTheDocument()
   })
 
   it('pages forward with the cursor and back to the first page', async () => {
@@ -209,6 +219,69 @@ describe('InboxPage', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Primera página' }))
     await waitFor(() => expect(router.state.location.search).toBe('?type=EML'))
+  })
+
+  it('says it is loading and holds the pager while a load runs, since its cursor belongs to the old listing', async () => {
+    let release: (response: Response) => void = () => {}
+    const fetchMock = vi.fn<typeof fetch>(withPeople(async () => reply(200, page(rows, 'next-1'))))
+    vi.stubGlobal('fetch', fetchMock)
+    const router = renderAt()
+    await screen.findByRole('table')
+    fetchMock.mockImplementation(withPeople(() => new Promise<Response>((resolve) => (release = resolve))))
+
+    await userEvent.click(screen.getByRole('button', { name: 'CSV' }))
+    expect(screen.getByRole('status')).toHaveTextContent('Cargando evidencias…')
+    const next = screen.getByRole('button', { name: 'Página siguiente' })
+    expect(next).toHaveAttribute('aria-disabled', 'true')
+    await userEvent.click(next)
+
+    release(reply(200, page([])))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('0 evidencias de tipo CSV'))
+    expect(router.state.location.search).toBe('?type=CSV')
+    expect(inboxCalls(fetchMock)).toEqual(['/api/v1/evidence', '/api/v1/evidence?type=CSV'])
+  })
+
+  it('drops a cursor the API refuses and shows the first page of the same listing', async () => {
+    const refused = { title: 'One or more validation errors occurred.', status: 400, errors: { cursor: ['Not a cursor this API issued for these filters and sort; start again without it.'] } }
+    const fetchMock = vi.fn<typeof fetch>(
+      withPeople(async (input) => (String(input).includes('cursor=') ? reply(400, refused, 'application/problem+json') : reply(200, page(rows)))),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const router = renderAt('/?type=EML&cursor=stale')
+
+    await screen.findByRole('table')
+    expect(router.state.location.search).toBe('?type=EML')
+    expect(inboxCalls(fetchMock)).toEqual(['/api/v1/evidence?type=EML&cursor=stale', '/api/v1/evidence?type=EML'])
+  })
+
+  it('names a custodian the list lacks instead of showing "Todos"', async () => {
+    stubFetch(200, page([]))
+    renderAt('/?custodianId=999')
+
+    const select = await screen.findByRole('combobox', { name: 'Custodio' })
+    expect(select).toHaveValue('999')
+    expect(within(select).getByRole('option', { selected: true })).toHaveTextContent('Custodio desconocido (#999)')
+  })
+
+  it('reads the custodian list once per visit and still lists evidence when it fails', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) =>
+      String(input).startsWith('/api/v1/people') ? reply(500, { title: 'Error', status: 500 }, 'application/problem+json') : reply(200, page(rows)),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const router = renderAt()
+
+    await screen.findByRole('table')
+    expect(within(screen.getByRole('combobox', { name: 'Custodio' })).getAllByRole('option').map((o) => o.textContent)).toEqual(['Todos'])
+
+    fetchMock.mockImplementation(withPeople(async () => reply(200, page(rows))))
+    await userEvent.click(screen.getByRole('button', { name: 'LOG' }))
+    await waitFor(() => expect(router.state.location.search).toBe('?type=LOG'))
+    await userEvent.click(screen.getByRole('button', { name: 'CSV' }))
+    await waitFor(() => expect(router.state.location.search).toBe('?type=CSV'))
+
+    // The failed read is retried once, then served from the cache.
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/v1/people'))).toHaveLength(2)
+    expect(await screen.findByRole('option', { name: 'Nuria Paredes' })).toBeInTheDocument()
   })
 
   it('names who a pending transfer is waiting on and shows integrity in words', async () => {

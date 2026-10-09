@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
@@ -46,11 +46,11 @@ function json(status: number, body: unknown, contentType = 'application/json') {
 }
 
 /** The evidence and its chain; verification answers whatever the test sets. */
-function stubApi(verify: () => Promise<Response>) {
+function stubApi(verify: () => Promise<Response>, events = chain.events) {
   const fetchMock = vi.fn<typeof fetch>(async (input) => {
     const url = String(input)
     if (url === `/api/v1/evidence/${code}`) return json(200, detail)
-    if (url === `/api/v1/evidence/${code}/chain`) return json(200, chain)
+    if (url === `/api/v1/evidence/${code}/chain`) return json(200, { code, events })
     if (url === `/api/v1/evidence/${code}/chain/verify`) return verify()
     return json(404, { status: 404 }, 'application/problem+json')
   })
@@ -99,8 +99,24 @@ describe('EvidencePage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Verificar cadena' }))
 
-    expect(await screen.findByText('Cadena íntegra: los 2 eventos y el contenido coinciden con lo firmado.')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Cadena íntegra: los 2 eventos y el contenido coinciden con lo firmado.'))
     expect(screen.getAllByText('Íntegra').length).toBeGreaterThan(0)
+  })
+
+  it('runs one verification at a time, however often the button is pressed', async () => {
+    let release: (response: Response) => void = () => {}
+    const fetchMock = stubApi(() => new Promise<Response>((resolve) => (release = resolve)))
+    await open()
+    const button = screen.getByRole('button', { name: 'Verificar cadena' })
+
+    await userEvent.click(button)
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('status')).toHaveTextContent('Verificando la cadena…')
+    await userEvent.click(button)
+    release(json(200, report({ eventCount: 1, verifiedThroughSeq: 1 })))
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Cadena íntegra: el evento y el contenido coinciden con lo firmado.'))
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).endsWith('/chain/verify'))).toHaveLength(1)
   })
 
   it('shows the first invalid event inline and marks it in the timeline', async () => {
@@ -115,6 +131,50 @@ describe('EvidencePage', () => {
     const marked = document.getElementById('event-2')!
     expect(marked).toHaveTextContent('Primer evento inválido')
     expect(document.getElementById('event-1')).toHaveTextContent('(verificado)')
+    expect(screen.getAllByText('Alterada').length).toBeGreaterThan(0)
+  })
+
+  it('names a missing event in its own row and moves focus there from the link', async () => {
+    const withGap = [chain.events[0], { ...chain.events[1], eventId: 13, seq: 3 }]
+    stubApi(async () => json(200, report({ valid: false, verifiedThroughSeq: 1, firstInvalid: { eventId: 13, seq: 2, reason: 'SEQUENCE_GAP', detail: 'Se esperaba el evento 2 y aparece el 3.' } })), withGap)
+    await open()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Verificar cadena' }))
+    const link = await screen.findByRole('link', { name: 'evento #2' })
+
+    const items = within(screen.getByRole('region', { name: 'Cadena de custodia' })).getAllByRole('listitem')
+    expect(items.map((item) => item.querySelector('.timeline__seq')?.textContent)).toEqual(['#1', '#2', '#3'])
+    expect(items[1]).toHaveTextContent('Falta el evento #2 · Primer evento inválido')
+    expect(items[2]).not.toHaveTextContent('Primer evento inválido')
+    await userEvent.click(link)
+    expect(items[1]).toHaveFocus()
+  })
+
+  it('names an invalid event the timeline lacks without linking to it', async () => {
+    stubApi(async () => json(200, report({ valid: false, verifiedThroughSeq: 2, firstInvalid: { eventId: 99, seq: 3, reason: 'HEAD_MISMATCH', detail: 'La cabecera de la evidencia no coincide con su último evento.' } })))
+    await open()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Verificar cadena' }))
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Cadena alterada en el evento #3'))
+    expect(screen.queryByRole('link', { name: 'evento #3' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Primer evento inválido/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the last report when a later verification gets no answer', async () => {
+    const fetchMock = stubApi(async () => json(200, report({ valid: false, verifiedThroughSeq: 1, firstInvalid: { eventId: 12, seq: 2, reason: 'MAC_MISMATCH', detail: 'El MAC no corresponde a los datos del evento.' } })))
+    await open()
+    await userEvent.click(screen.getByRole('button', { name: 'Verificar cadena' }))
+    await screen.findByRole('link', { name: 'evento #2' })
+
+    fetchMock.mockImplementation(async (input) => {
+      if (String(input).endsWith('/chain/verify')) throw new TypeError('Failed to fetch')
+      return json(404, { status: 404 }, 'application/problem+json')
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Verificar cadena' }))
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Sin conexión: no se pudo verificar.'))
+    expect(document.getElementById('event-2')).toHaveTextContent('Primer evento inválido')
     expect(screen.getAllByText('Alterada').length).toBeGreaterThan(0)
   })
 
