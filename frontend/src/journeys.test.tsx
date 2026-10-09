@@ -264,7 +264,7 @@ describe('a request that got no answer', () => {
 })
 
 describe('a request the server throttles', () => {
-  it('says nothing was saved, re-reads nothing, and retries with the same Idempotency-Key once the wait is over', async () => {
+  it('says nothing was saved, re-reads nothing, holds every write, and retries with the same Idempotency-Key once the wait is over', async () => {
     signInAs('Investigador')
     const db = { detail }
     const reads = evidenceApi(db)
@@ -290,12 +290,20 @@ describe('a request the server throttles', () => {
     expect(alert).toHaveFocus()
     expect(reads.detail).toBe(1)
     const retry = within(alert).getByRole('button', { name: 'Reintentar' })
+    const requestButton = screen.getByRole('button', { name: 'Solicitar transferencia' })
     expect(retry).toHaveAttribute('aria-disabled', 'true')
+    expect(requestButton).toHaveAttribute('aria-disabled', 'true')
     await userEvent.click(retry)
+    await userEvent.click(requestButton)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(keys).toHaveLength(1)
 
     await waitFor(() => expect(retry).toHaveAttribute('aria-disabled', 'false'), { timeout: 2_000 })
     expect(alert).toHaveTextContent('Ya puedes reintentar.')
+    // Reopening the dialog offers the same request, saying it was not saved rather than that it is unconfirmed.
+    await userEvent.click(requestButton)
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Tu última solicitud no se guardó')
+    await userEvent.keyboard('{Escape}')
     await userEvent.click(retry)
 
     expect(await screen.findByText('Pendiente')).toBeInTheDocument()

@@ -66,8 +66,9 @@ export function TransferPanel({
       (request.state === 'idle' && !request.data ? reconcileRequest(loaded, undefined, false) : null) ??
       (decision.state === 'idle' && !decision.data ? reconcileDecision(loaded, undefined, false) : null),
   )
-  // After a 429, a retry before the server's wait is over would only be turned away again.
+  // After a 429, any write before the server's wait is over would only be turned away again.
   const waited = useWaited(notice?.wait, notice)
+  const throttledRequest = notice?.wait !== undefined && notice.retry === 'request'
   const noticeRef = useRef<HTMLDivElement>(null)
   const titleRef = useRef<HTMLHeadingElement>(null)
   // The transfer a decision was sent for: once a 409 says it was decided, the page no longer loads it.
@@ -195,12 +196,12 @@ export function TransferPanel({
                 <button
                   type="button"
                   className="button"
-                  aria-disabled={deciding !== undefined}
-                  onClick={() => deciding === undefined && decide('accept', pending)}
+                  aria-disabled={deciding !== undefined || !waited}
+                  onClick={() => deciding === undefined && waited && decide('accept', pending)}
                 >
                   Aceptar custodia
                 </button>
-                <RejectDialog busy={deciding !== undefined} fallbackFocus={headingRef} onSubmit={(reason) => decide('reject', pending, reason)} />
+                <RejectDialog busy={deciding !== undefined || !waited} fallbackFocus={headingRef} onSubmit={(reason) => decide('reject', pending, reason)} />
               </div>
             ) : undefined
           }
@@ -225,7 +226,8 @@ export function TransferPanel({
           custodians={custodians}
           currentCustodianId={detail.currentCustodian.id}
           unresolved={requestIntent ? { toCustodianId: requestIntent.fields.toCustodianId, reason: requestIntent.fields.reason } : undefined}
-          busy={request.state !== 'idle'}
+          throttled={throttledRequest}
+          busy={request.state !== 'idle' || !waited}
           fallbackFocus={headingRef}
           onSubmit={requestTransfer}
         />

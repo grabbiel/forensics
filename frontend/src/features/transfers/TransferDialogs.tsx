@@ -77,6 +77,7 @@ export function RequestDialog({
   custodians,
   currentCustodianId,
   unresolved,
+  throttled = false,
   busy,
   fallbackFocus,
   onSubmit,
@@ -85,6 +86,8 @@ export function RequestDialog({
   currentCustodianId: number
   /** The fields of a request whose outcome is still unknown, so reopening resends the same request. */
   unresolved?: RequestFields
+  /** The unresolved request was turned away with a 429: its outcome is known, nothing was saved. */
+  throttled?: boolean
   busy: boolean
   fallbackFocus: RefObject<HTMLElement | null>
   onSubmit: (fields: RequestFields) => void
@@ -130,9 +133,11 @@ export function RequestDialog({
       }
       title="Solicitar transferencia"
       description={
-        unresolved
-          ? 'Tu última solicitud quedó sin confirmar. Enviarla de nuevo con los mismos datos no la duplicará; con otros, será una nueva.'
-          : 'La custodia pasará a quien elijas cuando lo acepte. Mientras tanto queda pendiente.'
+        unresolved && throttled
+          ? 'Tu última solicitud no se guardó: el servidor recibió demasiadas operaciones seguidas. Puedes enviarla de nuevo con los mismos datos; con otros, será una nueva.'
+          : unresolved
+            ? 'Tu última solicitud quedó sin confirmar. Enviarla de nuevo con los mismos datos no la duplicará; con otros, será una nueva.'
+            : 'La custodia pasará a quien elijas cuando lo acepte. Mientras tanto queda pendiente.'
       }
       fallbackFocus={fallbackFocus}
       initialFocus={toField}
