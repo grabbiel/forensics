@@ -99,13 +99,21 @@ public sealed class NotRecipientException(TransferCommand command)
 /// with what actually happened (the second tab of the two-tab demo).
 /// </summary>
 public sealed class InvalidTransitionException(TransferCommand command, CustodyTransfer? transfer)
-    : TransferRuleException(TransitionError.InvalidTransition,
-        transfer is null ? $"Cannot {command.ToString().ToLowerInvariant()}: the evidence already has a pending transfer."
-        : $"Cannot {command.ToString().ToLowerInvariant()} transfer {transfer.TransferId}: it is {transfer.Status}.")
+    : TransferRuleException(TransitionError.InvalidTransition, Describe(command, transfer))
 {
+    /// <summary>The transfer acted on, or the one already pending when a request is refused.</summary>
+    public CustodyTransfer? Transfer { get; } = transfer;
+
     public TransferStatus? CurrentStatus { get; } = transfer?.Status;
 
     public int? ActedById { get; } = transfer?.DecidedById;
 
     public DateTime? ActedAtUtc { get; } = transfer?.DecidedAtUtc;
+
+    private static string Describe(TransferCommand command, CustodyTransfer? transfer) => (command, transfer) switch
+    {
+        (TransferCommand.Request, null) => "Cannot request a transfer: the evidence already has a pending one.",
+        (TransferCommand.Request, _) => $"Cannot request a transfer: transfer {transfer.TransferId} is still pending.",
+        _ => $"Cannot {command.ToString().ToLowerInvariant()} transfer {transfer?.TransferId}: it is {transfer?.Status}.",
+    };
 }

@@ -17,6 +17,16 @@ public sealed class ApiConfigurationTests(ApiFactory factory)
         Assert.Equal(TimeSpan.FromHours(72), threeDays.Services.GetRequiredService<OverdueTransferRule>().Deadline);
     }
 
+    [Theory]
+    [InlineData("AAAAAAAAAAAAAAAAAAAAAA==")] // 16 bytes
+    [InlineData("not base64")]
+    public void A_short_or_malformed_signing_key_stops_the_host_from_starting(string key)
+    {
+        using var weak = factory.WithWebHostBuilder(b => b.UseSetting("Jwt:SigningKey", key));
+        var error = Assert.ThrowsAny<Exception>(() => weak.Services);
+        Assert.Contains("Jwt:SigningKey must be base64 of at least 32 bytes", error.ToString());
+    }
+
     [Fact]
     public void A_non_positive_deadline_stops_the_host_from_starting()
     {

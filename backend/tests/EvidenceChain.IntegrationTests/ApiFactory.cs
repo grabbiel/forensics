@@ -4,10 +4,12 @@ using DotNet.Testcontainers.Builders;
 using EvidenceChain.Domain.Catalog;
 using EvidenceChain.Domain.People;
 using EvidenceChain.Infrastructure.Persistence;
+using EvidenceChain.IntegrationTests.Probes;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.MsSql;
 using DatabasePreparation = seeder::EvidenceChain.Seeder.DatabasePreparation;
 
@@ -24,6 +26,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     private const string AppLogin = "evidence_app";
     private const string AppPassword = "DevOnly_TestPassw0rd!2026";
     private MsSqlContainer? _sql;
+    private WebApplicationFactory<Program>? _probes;
 
     /// <summary>sa connection to the test database, or null when Docker is unavailable.</summary>
     public string? AdminConnectionString { get; private set; }
@@ -33,6 +36,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     /// <summary>Why database tests are skipped, if they are.</summary>
     public string? SkipReason { get; private set; }
+
+    /// <summary>The same API plus the test-only <see cref="ProbeController"/>; the published contract never sees it.</summary>
+    public WebApplicationFactory<Program> Probes => _probes ??= WithWebHostBuilder(builder =>
+        builder.ConfigureServices(services => services.AddControllers().AddApplicationPart(typeof(ProbeController).Assembly)));
 
     /// <summary>Starts SQL Server, then mirrors the compose migrate job: migrate, prepare, insert two rows.</summary>
     public async ValueTask InitializeAsync()
@@ -104,6 +111,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     /// <summary>Stops the host, then the container.</summary>
     public override async ValueTask DisposeAsync()
     {
+        if (_probes is not null)
+            await _probes.DisposeAsync();
         await base.DisposeAsync();
         if (_sql is not null)
             await _sql.DisposeAsync();

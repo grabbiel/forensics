@@ -34,15 +34,18 @@ public sealed class CustodyTransfer
 
     /// <summary>
     /// An Investigador asks the evidence's current custodian to hand it to <paramref name="recipient"/>, a different Custodio.
-    /// <paramref name="hasPendingTransfer"/> refuses a second open request (the database enforces it too).
+    /// <paramref name="pendingTransfer"/>, the evidence's open request if there is one, refuses a second and travels in
+    /// the refusal so the API can show it (the database also allows one open request per evidence).
     /// </summary>
     public static CustodyTransfer Request(
-        Evidence evidence, Actor requester, Actor recipient, bool hasPendingTransfer, DateTime requestedAtUtc,
+        Evidence evidence, Actor requester, Actor recipient, CustodyTransfer? pendingTransfer, DateTime requestedAtUtc,
         string reason, Guid clientRequestId, byte[] requestFingerprint)
     {
         ArgumentNullException.ThrowIfNull(evidence);
-        var decision = TransferTransitions.Decide(hasPendingTransfer ? TransferStatus.Pending : null, TransferCommand.Request, requester.Role, isRecipient: false);
-        TransferRuleException.ThrowIfRefused(decision, TransferCommand.Request, requester.Role, transfer: null);
+        if (pendingTransfer is not null && (pendingTransfer.EvidenceId != evidence.EvidenceId || pendingTransfer.Status != TransferStatus.Pending))
+            throw new ArgumentException("Pass the evidence's pending transfer, or null when it has none.", nameof(pendingTransfer));
+        var decision = TransferTransitions.Decide(pendingTransfer?.Status, TransferCommand.Request, requester.Role, isRecipient: false);
+        TransferRuleException.ThrowIfRefused(decision, TransferCommand.Request, requester.Role, pendingTransfer);
 
         if (recipient.Role != UserRole.Custodio)
             throw new ArgumentException("The recipient must be a Custodio.", nameof(recipient));

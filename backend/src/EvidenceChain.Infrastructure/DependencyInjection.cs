@@ -1,5 +1,7 @@
 using EvidenceChain.Application.Inbox;
+using EvidenceChain.Application.People;
 using EvidenceChain.Infrastructure.Inbox;
+using EvidenceChain.Infrastructure.People;
 using EvidenceChain.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -15,6 +17,7 @@ public static class DependencyInjection
 
         services.AddDbContext<AppDbContext>(options => SqlServerSetup.Configure(options, connectionString));
         services.AddScoped<IEvidenceInboxQuery, EvidenceInboxQuery>();
+        services.AddScoped<IUserDirectory, UserDirectory>();
         return services;
     }
 }

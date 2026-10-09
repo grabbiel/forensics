@@ -225,7 +225,7 @@ public sealed class ChainVerifierTests
     }
 
     private static CustodyTransfer Request(Evidence evidence, int requester, int to, DateTime? at = null) =>
-        CustodyTransfer.Request(evidence, new Actor(requester, UserRole.Investigador), new Actor(to, UserRole.Custodio), false,
+        CustodyTransfer.Request(evidence, new Actor(requester, UserRole.Investigador), new Actor(to, UserRole.Custodio), null,
             at ?? Registered.AddDays(1), "Análisis", Guid.CreateVersion7(), new byte[32]);
 
     /// <summary>The identity the database would assign.</summary>

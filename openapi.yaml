@@ -49,6 +49,45 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ValidationProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+      security:
+        - Bearer: [ ]
+  /api/v1/auth/token:
+    post:
+      tags:
+        - Auth
+      summary: Signs in as a seeded demo user and returns a bearer token.
+      description: 'Demo sign-in, no password. The role comes from the seeded user, never from the request.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+          text/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+          application/*+json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblemDetails'
 components:
   schemas:
     EvidenceSummary:
@@ -68,6 +107,80 @@ components:
           format: date
         description:
           type: string
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type:
+            - 'null'
+            - string
+        title:
+          type:
+            - 'null'
+            - string
+        status:
+          type:
+            - 'null'
+            - integer
+          format: int32
+        detail:
+          type:
+            - 'null'
+            - string
+        instance:
+          type:
+            - 'null'
+            - string
+    TokenRequest:
+      required:
+        - userName
+      type: object
+      properties:
+        userName:
+          maxLength: 64
+          minLength: 0
+          type: string
+          description: 'A seeded user name, e.g. investigador.demo or custodio.demo.'
+    TokenResponse:
+      required:
+        - accessToken
+        - tokenType
+        - expiresAtUtc
+        - user
+      type: object
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          type: string
+        expiresAtUtc:
+          type: string
+          format: date-time
+        user:
+          $ref: '#/components/schemas/UserSummary'
+      description: 'A bearer token for the Authorization header, when it expires, and who it names.'
+    UserRole:
+      enum:
+        - Investigador
+        - Custodio
+        - Supervisor
+    UserSummary:
+      required:
+        - id
+        - userName
+        - displayName
+        - role
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+        userName:
+          type: string
+        displayName:
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
     ValidationProblemDetails:
       type: object
       properties:
@@ -98,5 +211,12 @@ components:
             type: array
             items:
               type: string
+  securitySchemes:
+    Bearer:
+      type: http
+      description: Token from POST /api/v1/auth/token.
+      scheme: bearer
+      bearerFormat: JWT
 tags:
   - name: Evidence
+  - name: Auth
