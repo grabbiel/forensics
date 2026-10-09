@@ -13,4 +13,7 @@ public interface IUserDirectory
 
     /// <summary>The user with this id, or null.</summary>
     Task<UserSummary?> FindAsync(int userId, CancellationToken cancellationToken);
+
+    /// <summary>Everyone, or everyone with <paramref name="role"/>, by display name.</summary>
+    Task<IReadOnlyList<UserSummary>> ListAsync(UserRole? role, CancellationToken cancellationToken);
 }
