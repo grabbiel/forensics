@@ -1,0 +1,6 @@
+* text=auto
+*.sh text eol=lf
+
+# Evidence bytes are hashed: Git must never normalise them.
+database/synthetic/samples/** -text
+**/fixtures/** -text

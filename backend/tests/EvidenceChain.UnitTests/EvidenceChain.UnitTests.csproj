@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\EvidenceChain.Domain\EvidenceChain.Domain.csproj" />
+    <ProjectReference Include="..\..\src\EvidenceChain.Application\EvidenceChain.Application.csproj" />
+    <ProjectReference Include="..\..\src\EvidenceChain.Api\EvidenceChain.Api.csproj" />
+    <ProjectReference Include="..\..\tools\EvidenceChain.SyntheticData\EvidenceChain.SyntheticData.csproj" />
+  </ItemGroup>
+
+</Project>

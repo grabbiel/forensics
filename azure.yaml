@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+# Azure Developer CLI project. `azd provision` deploys the infrastructure in infra/; `azd deploy api` publishes the API.
+# The SPA is deployed by Vercel, not azd.
+name: evidence-chain
+requiredVersions:
+  azd: ">= 1.20.0"
+infra:
+  provider: bicep
+  path: infra
+services:
+  api:
+    project: ./backend/src/EvidenceChain.Api
+    language: dotnet
+    host: appservice

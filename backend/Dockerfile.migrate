@@ -1,0 +1,23 @@
+# syntax=docker/dockerfile:1
+# One-shot "migrate-and-seed" image (roadmap §1.2b, §2.5). Build context: backend/.
+# Runs the EF migration bundle, prepares the local database, loads data, then exits.
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+ARG TARGETARCH
+WORKDIR /src
+COPY . .
+# ef reads project metadata without restoring, so restore first.
+RUN dotnet tool restore \
+ && dotnet restore src/EvidenceChain.Api/EvidenceChain.Api.csproj \
+ && RID="linux-$([ "$TARGETARCH" = "arm64" ] && echo arm64 || echo x64)" \
+ && dotnet ef migrations bundle \
+      -p src/EvidenceChain.Infrastructure -s src/EvidenceChain.Api \
+      --self-contained -r "$RID" -o /out/efbundle \
+ && dotnet publish tools/EvidenceChain.Seeder/EvidenceChain.Seeder.csproj -c Release -o /out/seeder
+
+FROM mcr.microsoft.com/dotnet/runtime:10.0
+WORKDIR /app
+COPY --from=build /out .
+COPY migrate-and-seed.sh .
+USER $APP_UID
+ENTRYPOINT ["sh", "./migrate-and-seed.sh"]

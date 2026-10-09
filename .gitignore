@@ -55,3 +55,32 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Local architecture-planning workspace (not part of the submission)
+planning/
+.local/
+# Playwright CLI output (may contain credentials)
+.playwright-cli/
+
+# OS / editors
+.DS_Store
+.playwright/
+
+# Local overrides (keep the examples)
+.env.*
+!.env.example
+
+# Node
+node_modules/
+
+# EF migration bundles and generated synthetic output
+efbundle*
+database/synthetic/out/
+
+# Azure Developer CLI environments (outputs and local settings)
+.azure/
+
+# Local AI tooling (skills, agent config)
+.agents/
+.claude/
+skills-lock.json

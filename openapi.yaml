@@ -1,0 +1,102 @@
+openapi: '3.1.1'
+info:
+  title: Evidence Chain API
+  description: Chain of custody for digital evidence. Errors use RFC 9457 problem details.
+  version: v1
+servers:
+  - url: http://localhost:8081
+    description: docker compose
+paths:
+  /api/v1/evidence:
+    get:
+      tags:
+        - Evidence
+      summary: Lists recent evidence.
+      parameters:
+        - name: q
+          in: query
+          description: Code prefix (e.g. EML2026) or text in the description.
+          schema:
+            maxLength: 100
+            minLength: 0
+            type: string
+        - name: type
+          in: query
+          description: 'LOG, CSV or EML.'
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 'Rows to return, 1 to 50.'
+          schema:
+            maximum: 50
+            minimum: 1
+            type: integer
+            format: int32
+            default: 25
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EvidenceSummary'
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ValidationProblemDetails'
+components:
+  schemas:
+    EvidenceSummary:
+      required:
+        - code
+        - typeCode
+        - registeredOn
+        - description
+      type: object
+      properties:
+        code:
+          type: string
+        typeCode:
+          type: string
+        registeredOn:
+          type: string
+          format: date
+        description:
+          type: string
+    ValidationProblemDetails:
+      type: object
+      properties:
+        type:
+          type:
+            - 'null'
+            - string
+        title:
+          type:
+            - 'null'
+            - string
+        status:
+          type:
+            - 'null'
+            - integer
+          format: int32
+        detail:
+          type:
+            - 'null'
+            - string
+        instance:
+          type:
+            - 'null'
+            - string
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+tags:
+  - name: Evidence

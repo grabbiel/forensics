@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Pure, deterministic generator for the synthetic evidence dataset (roadmap §2.3). No database access. -->
+</Project>
