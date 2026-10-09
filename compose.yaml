@@ -30,6 +30,9 @@ services:
       ADMIN_CONNECTION: Server=mssql,1433;Database=EvidenceChain;User Id=sa;Password=${MSSQL_SA_PASSWORD:-DevOnly_Passw0rd!2026};Encrypt=True;TrustServerCertificate=True
       APP_DB_LOGIN: evidence_app
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:-DevOnly_AppPassw0rd!2026}
+      # Development: the seeder MACs with the API's published dev key. SEED_PROFILE=scale loads 200,000 events.
+      DOTNET_ENVIRONMENT: Development
+      SEED_PROFILE: ${SEED_PROFILE:-reference}
     depends_on:
       mssql:
         condition: service_healthy

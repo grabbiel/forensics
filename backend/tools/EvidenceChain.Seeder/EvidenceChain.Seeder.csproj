@@ -9,6 +9,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The API's dev settings, linked not copied: the seeder signs with exactly the key the API verifies with. -->
+    <None Include="..\..\src\EvidenceChain.Api\appsettings.Development.json" Link="appsettings.Development.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\EvidenceChain.Infrastructure\EvidenceChain.Infrastructure.csproj" />
     <ProjectReference Include="..\EvidenceChain.SyntheticData\EvidenceChain.SyntheticData.csproj" />
   </ItemGroup>

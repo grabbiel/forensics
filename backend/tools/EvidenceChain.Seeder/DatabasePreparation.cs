@@ -41,8 +41,12 @@ internal static class DatabasePreparation
 
             SET @sql = N'ALTER ROLE db_datareader ADD MEMBER ' + @quotedLogin;
             EXEC sys.sp_executesql @sql;
+
+            -- Explicit DENY outlives any later write grant: the app can never rewrite custody history.
+            SET @sql = N'DENY UPDATE, DELETE ON dbo.CustodyEvents TO ' + @quotedLogin;
+            EXEC sys.sp_executesql @sql;
             """;
-        // Read-only for the Day 1 API. Day 2 grants INSERT per write table; CustodyEvents never gets UPDATE or DELETE.
+        // Read-only for now; write endpoints add INSERT per table, and CustodyEvents keeps its DENY.
         await ExecuteAsync(connection, sql,
         [
             new SqlParameter("@login", SqlDbType.NVarChar, 128) { Value = login },
