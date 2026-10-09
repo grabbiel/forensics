@@ -148,6 +148,9 @@ describe('verify resource route', () => {
     vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => reply(404, { status: 404 }, 'application/problem+json')))
     expect(await verifyLoader(args)).toEqual({ ok: false, status: 404, problem: { status: 404 } })
 
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => reply(429, { status: 429 }, 'application/problem+json', { 'Retry-After': '9' })))
+    expect(await verifyLoader(args)).toEqual({ ok: false, status: 429, problem: { status: 429 }, retryAfterSeconds: 9 })
+
     vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => Promise.reject(new TypeError('Failed to fetch'))))
     expect(await verifyLoader(args)).toEqual({ ok: false, status: 0 })
   })

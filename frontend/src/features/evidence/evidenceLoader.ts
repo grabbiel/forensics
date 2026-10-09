@@ -17,10 +17,13 @@ export function evidenceLoader({ request, params }: LoaderFunctionArgs) {
   })
 }
 
-/** What the verify resource route answers: the report, or why there is none. Never thrown, so the page stays. */
+/**
+ * What the verify resource route answers: the report, or why there is none, with the seconds to wait after a 429.
+ * Never thrown, so the page stays.
+ */
 export type VerifyResult =
   | { ok: true; report: VerificationReport }
-  | { ok: false; status: number; problem?: ProblemDetails }
+  | { ok: false; status: number; problem?: ProblemDetails; retryAfterSeconds?: number }
 
 /** Resource route for fetcher.load: verifies the chain now. */
 export function verifyLoader({ request, params }: LoaderFunctionArgs): Promise<VerifyResult> {
@@ -28,7 +31,8 @@ export function verifyLoader({ request, params }: LoaderFunctionArgs): Promise<V
     try {
       return { ok: true, report: await verifyChain(params.id!, request.signal) }
     } catch (error) {
-      if (error instanceof ApiError && error.status !== 401) return { ok: false, status: error.status, problem: error.problem }
+      if (error instanceof ApiError && error.status !== 401)
+        return { ok: false, status: error.status, problem: error.problem, retryAfterSeconds: error.retryAfterSeconds }
       if (error instanceof ApiError) throw error
       return { ok: false, status: 0 } // no answer
     }

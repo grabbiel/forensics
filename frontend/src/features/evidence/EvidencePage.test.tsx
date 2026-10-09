@@ -182,6 +182,32 @@ describe('EvidencePage', () => {
     expect(screen.getAllByText('Alterada').length).toBeGreaterThan(0)
   })
 
+  it('asks to wait after too many verifications, holding the button until the wait is over', async () => {
+    let throttled = true
+    const fetchMock = stubApi(async () =>
+      throttled
+        ? new Response(JSON.stringify({ status: 429 }), { status: 429, headers: { 'Content-Type': 'application/problem+json', 'Retry-After': '1' } })
+        : json(200, report({})),
+    )
+    const verifications = () => fetchMock.mock.calls.filter(([input]) => String(input).endsWith('/chain/verify')).length
+    await open()
+    const button = screen.getByRole('button', { name: 'Verificar cadena' })
+
+    await userEvent.click(button)
+
+    await waitFor(() => expect(verifyStatus()).toHaveTextContent('Demasiadas verificaciones seguidas. Espera 1 s antes de volver a verificar.'))
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    await userEvent.click(button)
+    expect(verifications()).toBe(1)
+
+    throttled = false
+    await waitFor(() => expect(button).toHaveAttribute('aria-disabled', 'false'), { timeout: 2_000 })
+    expect(verifyStatus()).toHaveTextContent('Demasiadas verificaciones seguidas. Ya puedes volver a verificar.')
+    await userEvent.click(button)
+
+    await waitFor(() => expect(verifyStatus()).toHaveTextContent('Cadena íntegra'))
+  })
+
   it('explains a verification that got no answer, and the page stays', async () => {
     stubApi(async () => Promise.reject(new TypeError('Failed to fetch')))
     await open()
