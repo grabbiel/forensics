@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Prepares the Azure SQL database after `azd provision` (roadmap §1.3), as the signed-in SQL Entra admin:
-# migrate, create the API's managed-identity user (reads and verification verdicts; custody events never change),
+# migrate, create the API's managed-identity user (custody writes by column; custody events never change),
 # allow SNAPSHOT reads, set compatibility 170, insert tracer rows.
 # Opens a firewall rule for this machine's public IP and always removes it on exit.
 # Usage: infra/scripts/prepare-database.sh [--skip-tracer] [--ip <address>]
@@ -56,8 +56,14 @@ sqlcmd -S "tcp:${sql_fqdn},1433" -d "$database" --authentication-method ActiveDi
 IF DATABASE_PRINCIPAL_ID(N'${api_name}') IS NULL
     CREATE USER [${api_name}] FROM EXTERNAL PROVIDER WITH OBJECT_ID = '${api_principal_id}';
 ALTER ROLE db_datareader ADD MEMBER [${api_name}];
--- Verification records its verdict, and only that, in the inbox projection.
-GRANT UPDATE ON dbo.EvidenceInbox (IntegrityStatus, IntegrityCheckedAtUtc, IntegrityCheckedThroughSeq) TO [${api_name}];
+-- Exactly the writes custody needs, by column, as tools/EvidenceChain.Seeder/DatabasePreparation.cs grants locally.
+GRANT INSERT ON dbo.CustodyTransfers TO [${api_name}];
+GRANT UPDATE ON dbo.CustodyTransfers (Status, DecidedAtUtc, DecidedById, DecisionNotes, DecisionKey, DecisionFingerprint) TO [${api_name}];
+GRANT INSERT ON dbo.CustodyEvents TO [${api_name}];
+GRANT UPDATE ON dbo.Evidence (HeadMac, EventCount, CurrentCustodianId) TO [${api_name}];
+GRANT UPDATE ON dbo.EvidenceInbox (EventCount, LastEventAtUtc, CurrentCustodianId, CurrentCustodianName,
+    PendingTransferId, PendingToCustodianId, PendingSinceUtc,
+    IntegrityStatus, IntegrityCheckedAtUtc, IntegrityCheckedThroughSeq) TO [${api_name}];
 -- Explicit DENY outlives any later write grant: custody history is never rewritten.
 DENY UPDATE, DELETE ON dbo.CustodyEvents TO [${api_name}];
 -- Multi-statement reads run in SNAPSHOT transactions; Azure SQL allows them by default.

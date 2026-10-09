@@ -33,21 +33,42 @@ public sealed class DatabasePreparationTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task App_login_reads_and_records_verdicts_but_changes_nothing_else()
+    public async Task App_login_writes_only_the_columns_custody_writes_need()
     {
         Assert.SkipWhen(factory.SkipReason is not null, factory.SkipReason ?? "");
         var cancellationToken = TestContext.Current.CancellationToken;
-
         await using var connection = await OpenAsAppAsync(cancellationToken);
-        await using var read = new SqlCommand("SELECT COUNT(*) FROM dbo.Evidence;", connection);
-        await using var verdict = new SqlCommand("UPDATE dbo.EvidenceInbox SET IntegrityStatus = IntegrityStatus, IntegrityCheckedAtUtc = IntegrityCheckedAtUtc, IntegrityCheckedThroughSeq = IntegrityCheckedThroughSeq;", connection);
-        await using var description = new SqlCommand("UPDATE dbo.EvidenceInbox SET Description = Description;", connection);
-        await using var delete = new SqlCommand("DELETE FROM dbo.Evidence;", connection);
 
-        Assert.True((int)(await read.ExecuteScalarAsync(cancellationToken))! > 0);
-        await verdict.ExecuteNonQueryAsync(cancellationToken);
-        Assert.Equal(230, (await Assert.ThrowsAsync<SqlException>(() => description.ExecuteNonQueryAsync(cancellationToken))).Number); // denied on the column
-        Assert.Equal(229, (await Assert.ThrowsAsync<SqlException>(() => delete.ExecuteNonQueryAsync(cancellationToken))).Number); // denied on the object
+        await using (var read = new SqlCommand("SELECT COUNT(*) FROM dbo.Evidence;", connection))
+            Assert.True((int)(await read.ExecuteScalarAsync(cancellationToken))! > 0);
+
+        // Allowed: what requests, decisions and verification write (no-op updates, so nothing changes).
+        foreach (var allowed in new[]
+        {
+            "UPDATE dbo.Evidence SET HeadMac = HeadMac, EventCount = EventCount, CurrentCustodianId = CurrentCustodianId;",
+            "UPDATE dbo.CustodyTransfers SET Status = Status, DecidedAtUtc = DecidedAtUtc, DecisionNotes = DecisionNotes;",
+            "UPDATE dbo.EvidenceInbox SET EventCount = EventCount, PendingTransferId = PendingTransferId, IntegrityStatus = IntegrityStatus;",
+        })
+        {
+            await using var command = new SqlCommand(allowed, connection);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        // Denied: anything else, by column (230) or by object (229).
+        foreach (var (denied, error) in new[]
+        {
+            ("UPDATE dbo.Evidence SET Description = Description;", 230),
+            ("UPDATE dbo.Evidence SET InitialCustodianId = InitialCustodianId;", 230),
+            ("UPDATE dbo.CustodyTransfers SET Reason = Reason;", 230),
+            ("UPDATE dbo.EvidenceInbox SET Description = Description;", 230),
+            ("DELETE FROM dbo.Evidence;", 229),
+            ("DELETE FROM dbo.CustodyTransfers;", 229),
+            ("INSERT dbo.Users (UserId, UserName, DisplayName, Email, Role) VALUES (99, 'x', 'x', 'x@example.test', 'Supervisor');", 229),
+        })
+        {
+            await using var command = new SqlCommand(denied, connection);
+            Assert.Equal(error, (await Assert.ThrowsAsync<SqlException>(() => command.ExecuteNonQueryAsync(cancellationToken))).Number);
+        }
     }
 
     [Fact]
@@ -65,7 +86,7 @@ public sealed class DatabasePreparationTests(ApiFactory factory)
             WHERE p.major_id = OBJECT_ID('dbo.CustodyEvents') AND p.grantee_principal_id = DATABASE_PRINCIPAL_ID('evidence_app')
             """, admin);
 
-        Assert.Equal("DENY DELETE, DENY UPDATE", await command.ExecuteScalarAsync(cancellationToken));
+        Assert.Equal("DENY DELETE, GRANT INSERT, DENY UPDATE", await command.ExecuteScalarAsync(cancellationToken)); // appended, never changed
     }
 
     private async Task<SqlConnection> OpenAsAppAsync(CancellationToken cancellationToken)
