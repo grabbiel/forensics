@@ -1,0 +1,683 @@
+/*
+ * Evidence Chain UI, measured from the live sites (Oct 2026):
+ * - naver.com: green-ringed pill search, white 8px boxes with a hairline ring, bold title/tab row
+ *   with muted inactive tabs and "/" separators, grey 4px summary bar, system font with tight tracking.
+ * - bilibili.com: #18191C/#61666D text family, #F6F7F8/#F1F2F3 fills, #E3E5E7 lines,
+ *   6px controls, 4px tags, 13px muted metadata, feed-style cards on phones.
+ * Colours are darkened where the originals miss WCAG AA (Naver green on white is 2.25:1).
+ * Radius rule: search 999px; surfaces 8px; controls 6px; tags 4px.
+ * Icon rule: Phosphor, regular weight; bold only for the brand mark and the search glyph.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --bg: #f6f7f8;
+  --surface: #fcfcfd;
+  --fill: #f6f7f8;
+  --fill-2: #f1f2f3;
+  --line: #e3e5e7;
+  --line-soft: #eceef0;
+  --ring: rgb(24 25 28 / 0.09);
+  --text: #18191c;
+  --text-2: #61666d;
+  --text-3: #6b7078;
+  --accent: #1f9e62; /* rings and icons only: 3.3:1 */
+  --accent-fill: #16774a;
+  --accent-fill-hover: #125f3b;
+  --accent-soft: #e6f5ed;
+  --on-accent: #fcfcfd;
+  --focus: #1a73e8;
+  --danger: #c5221f;
+  --search-shadow: 0 4px 14px rgb(31 158 98 / 0.1);
+
+  --radius-pill: 999px;
+  --radius-surface: 8px;
+  --radius-control: 6px;
+  --radius-tag: 4px;
+
+  --z-header: 10;
+  --z-skip: 20;
+
+  --font: -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', 'Apple SD Gothic Neo', 'PingFang SC', 'Helvetica Neue', Roboto, sans-serif;
+  --mono: 'Geist Mono Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --tracking: -0.02em;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121314;
+    --surface: #1a1b1e;
+    --fill: #222326;
+    --fill-2: #26282b;
+    --line: #2e3034;
+    --line-soft: #26282b;
+    --ring: rgb(255 255 255 / 0.08);
+    --text: #e3e5e7;
+    --text-2: #a9aeb5;
+    --text-3: #959ba3;
+    --accent: #3dc98a;
+    --accent-fill: #3dc98a;
+    --accent-fill-hover: #5cd6a0;
+    --accent-soft: #173226;
+    --on-accent: #0d2419;
+    --focus: #8ab4f8;
+    --danger: #f28b82;
+    --search-shadow: none;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-padding-top: 8rem; /* keeps focused elements clear of the sticky header */
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font: 500 14px/1.5 var(--font);
+  letter-spacing: var(--tracking);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  display: contents;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input {
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+svg {
+  flex: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: 12px;
+  top: -48px;
+  z-index: var(--z-skip);
+  padding: 8px 14px;
+  border-radius: var(--radius-control);
+  background: var(--text);
+  color: var(--surface);
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 12px;
+}
+
+/* ---- Header: Bilibili's 64px bar, Naver's ringed search centred ---- */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-header);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar__inner {
+  max-width: 1130px;
+  height: 64px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 600px) 1fr;
+  align-items: center;
+  gap: 24px;
+}
+
+.brand {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.brand__mark {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-control);
+  background: var(--accent-fill);
+  color: var(--on-accent);
+}
+
+.brand__name {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  height: 46px;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--search-shadow);
+}
+
+/* The ring is the container's, so the input itself draws none. */
+.search:has(.search__input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.search__input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px 0 22px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.search__input:focus-visible {
+  outline: none;
+}
+
+.search__input::placeholder {
+  color: var(--text-3);
+}
+
+.search__submit {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-right: 1px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--accent-fill);
+  cursor: pointer;
+}
+
+.search__submit:hover {
+  background: var(--accent-soft);
+}
+
+/* ---- Page and Naver-style content box ---- */
+
+.page {
+  flex: 1;
+  width: 100%;
+  max-width: 1130px;
+  margin: 0 auto;
+  padding: 24px 20px 40px;
+}
+
+.page:focus {
+  outline: none;
+}
+
+.panel {
+  position: relative;
+  background: var(--surface);
+  border-radius: var(--radius-surface);
+  box-shadow: 0 0 0 1px var(--ring);
+}
+
+.panel--message {
+  padding: 22px 20px 24px;
+}
+
+.panel--error {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 20px;
+  padding: 18px 20px 14px;
+}
+
+.panel__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  scroll-margin-top: 8rem;
+}
+
+.panel__title:focus {
+  outline: none;
+}
+
+.panel--message .panel__title:focus-visible {
+  outline: 2px solid var(--focus);
+}
+
+.panel__hint {
+  margin: 6px 0 16px;
+  color: var(--text-2);
+}
+
+/* Naver's tab row: bold labels, muted until active, "/" between them. */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.tabs__sep {
+  margin: 0 8px;
+  color: var(--line);
+  font-weight: 400;
+}
+
+.tab {
+  min-height: 32px;
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--text-2);
+}
+
+.tab[aria-pressed='true'] {
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* Naver's grey summary bar. */
+.subbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  margin: 0 20px;
+  padding: 0 16px;
+  border-radius: var(--radius-tag);
+  background: var(--fill);
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.subbar__count {
+  margin: 0;
+}
+
+.subbar__count strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.subbar__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+/* Indeterminate bar along the box's top edge while a loader runs. */
+.progress {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  overflow: hidden;
+  border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+}
+
+.progress::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  background: var(--accent);
+  animation: progress 1s ease-in-out infinite;
+}
+
+@keyframes progress {
+  from {
+    translate: -100% 0;
+  }
+  to {
+    translate: 300% 0;
+  }
+}
+
+/* ---- Results ---- */
+
+.results {
+  padding: 6px 0 8px;
+  transition: opacity 0.15s ease;
+}
+
+/* Stale rows fade while the next result loads. */
+.results[aria-busy='true'] {
+  opacity: 0.55;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.table-wrap:focus-visible {
+  outline-offset: -2px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: 12px 20px;
+  text-align: left;
+  vertical-align: middle;
+  border-top: 1px solid var(--line-soft);
+}
+
+.table thead th {
+  padding-block: 10px;
+  border-top: 0;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.table tbody tr:hover {
+  background: var(--fill);
+}
+
+.table__code {
+  color: var(--text);
+  font: 600 13px/1.4 var(--mono);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.table__desc {
+  min-width: 240px;
+}
+
+.table__num {
+  text-align: right !important;
+  color: var(--text-3);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Bilibili's small tag, kept neutral so green stays the only accent. */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: var(--radius-tag);
+  background: var(--fill-2);
+  color: var(--text-2);
+  font: 600 12px/1 var(--mono);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 48px 16px 56px;
+  color: var(--text-3);
+  text-align: center;
+}
+
+.empty__title {
+  margin: 0;
+  color: var(--text-2);
+}
+
+/* ---- Buttons ---- */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    translate 0.1s ease;
+}
+
+.button:hover {
+  background: var(--accent-fill-hover);
+}
+
+.button:active,
+.tab:active,
+.search__submit:active {
+  translate: 0 1px;
+}
+
+.button[aria-disabled='true'] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.button--ghost {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.button--ghost:hover {
+  background: var(--fill);
+}
+
+/* ---- Skeleton (first load) ---- */
+
+.skeleton {
+  display: block;
+  height: 14px;
+  border-radius: var(--radius-tag);
+  background: var(--fill-2);
+}
+
+.skeleton-rows {
+  padding: 6px 0 8px;
+}
+
+.skeleton-row {
+  display: grid;
+  grid-template-columns: 140px 64px 1fr 80px;
+  align-items: center;
+  gap: 24px;
+  padding: 15px 20px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.subbar .skeleton {
+  background: var(--fill-2);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton {
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.footer {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+/* ---- Phones: stacked header, Bilibili-style feed cards ---- */
+
+@media (max-width: 640px) {
+  .topbar__inner {
+    height: auto;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 10px 16px 12px;
+  }
+
+  .search {
+    height: 44px;
+  }
+
+  .page {
+    padding: 12px 12px 32px;
+  }
+
+  .panel__head {
+    padding: 16px 16px 12px;
+  }
+
+  .subbar {
+    margin: 0 16px;
+    padding: 0 12px;
+  }
+
+  .table-wrap {
+    overflow: visible;
+  }
+
+  .table,
+  .table tbody {
+    display: block;
+  }
+
+  .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .table tr {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    grid-template-areas:
+      'desc desc desc'
+      'code type date';
+    align-items: center;
+    gap: 8px 10px;
+    padding: 14px 16px;
+    border-top: 1px solid var(--line-soft);
+  }
+
+  .table th,
+  .table td {
+    padding: 0;
+    border: 0;
+  }
+
+  .table__desc {
+    grid-area: desc;
+    min-width: 0;
+    font-size: 15px;
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+
+  .table__code {
+    grid-area: code;
+    color: var(--text-2);
+    font-size: 12px;
+  }
+
+  .table__type {
+    grid-area: type;
+  }
+
+  .table__num {
+    grid-area: date;
+    justify-self: end;
+    font-size: 12px;
+  }
+
+  .skeleton-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 14px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
