@@ -49,6 +49,14 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ValidationProblemDetails'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+      security:
+        - Bearer: [ ]
   /api/v1/auth/token:
     post:
       tags:
@@ -96,6 +104,30 @@ components:
           format: date
         description:
           type: string
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type:
+            - 'null'
+            - string
+        title:
+          type:
+            - 'null'
+            - string
+        status:
+          type:
+            - 'null'
+            - integer
+          format: int32
+        detail:
+          type:
+            - 'null'
+            - string
+        instance:
+          type:
+            - 'null'
+            - string
     TokenRequest:
       required:
         - userName
@@ -176,6 +208,12 @@ components:
             type: array
             items:
               type: string
+  securitySchemes:
+    Bearer:
+      type: http
+      description: Token from POST /api/v1/auth/token.
+      scheme: bearer
+      bearerFormat: JWT
 tags:
   - name: Evidence
   - name: Auth

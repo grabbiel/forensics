@@ -1,4 +1,6 @@
+using System.ComponentModel.DataAnnotations;
 using EvidenceChain.Api.Auth;
+using EvidenceChain.Api.Http;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -20,6 +22,11 @@ public sealed class ProbeAuthController(IAuthorizationService authorization) : C
 
     [HttpGet("supervisor"), Authorize(Policy = Policies.Supervisor)]
     public IActionResult Supervisor() => NoContent();
+
+    /// <summary>A write guarded like accept and reject; echoes the headers it was given.</summary>
+    [HttpPost("write"), Authorize(Policy = Policies.Custodio), RequireIdempotencyKey, RequireIfMatch]
+    public IActionResult Write([FromQuery, Range(1, 5)] int n = 1) =>
+        Ok(new { key = HttpContext.IdempotencyKey(), version = Convert.ToHexStringLower(HttpContext.IfMatchVersion()), n });
 
     /// <summary>Decides the probe transfer, which was sent to custodio.demo.</summary>
     [HttpGet("recipient")]

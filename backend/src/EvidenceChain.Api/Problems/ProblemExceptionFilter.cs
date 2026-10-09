@@ -48,7 +48,7 @@ internal sealed class ProblemExceptionFilter(ProblemDetailsFactory problems, IUs
     /// 409 with the transfer as it stands, who last acted on it and when, and its ETag (also as a header),
     /// so the client can tell the user what happened and retry against the current version.
     /// </summary>
-    private async Task<ProblemDetails> ConflictAsync(HttpContext http, string type, string title, string detail, CustodyTransfer transfer)
+    private async Task<TransferConflictProblemDetails> ConflictAsync(HttpContext http, string type, string title, string detail, CustodyTransfer transfer)
     {
         var (actorId, actedAtUtc) = transfer.DecidedById is { } decider
             ? (decider, transfer.DecidedAtUtc!.Value)
@@ -57,11 +57,19 @@ internal sealed class ProblemExceptionFilter(ProblemDetailsFactory problems, IUs
         if (etag is not null)
             http.Response.Headers.ETag = etag;
 
-        var problem = Problem(http, StatusCodes.Status409Conflict, type, title, detail);
-        problem.Extensions["currentState"] = TransferState.From(transfer);
-        problem.Extensions["currentETag"] = etag;
-        problem.Extensions["actedBy"] = await users.FindAsync(actorId, http.RequestAborted);
-        problem.Extensions["actedAtUtc"] = actedAtUtc;
-        return problem;
+        var defaults = Problem(http, StatusCodes.Status409Conflict, type, title, detail);
+        return new TransferConflictProblemDetails
+        {
+            Type = defaults.Type,
+            Title = defaults.Title,
+            Status = defaults.Status,
+            Detail = defaults.Detail,
+            Instance = defaults.Instance,
+            Extensions = defaults.Extensions, // the trace id
+            CurrentState = TransferState.From(transfer),
+            CurrentETag = etag,
+            ActedBy = await users.FindAsync(actorId, http.RequestAborted),
+            ActedAtUtc = actedAtUtc,
+        };
     }
 }

@@ -21,7 +21,11 @@ if (string.IsNullOrWhiteSpace(connectionString))
 
 // Numbers are numbers (no quoted integers, integer-only OpenAPI types) and enums travel as their names.
 // Validation errors are keyed by JSON names (userName, not UserName).
-builder.Services.AddControllers(o => o.ModelMetadataDetailsProviders.Add(new SystemTextJsonValidationMetadataProvider()))
+builder.Services.AddControllers(o =>
+    {
+        o.ModelMetadataDetailsProviders.Add(new SystemTextJsonValidationMetadataProvider());
+        o.Conventions.Add(new ProblemResponsesConvention());
+    })
     .AddJsonOptions(o => ConfigureJson(o.JsonSerializerOptions));
 builder.Services.ConfigureHttpJsonOptions(o => ConfigureJson(o.SerializerOptions));
 builder.Services.AddEvidenceChainProblems();
