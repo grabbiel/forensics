@@ -5,66 +5,69 @@ using Microsoft.AspNetCore.Mvc.Infrastructure;
 
 namespace EvidenceChain.Api.Http;
 
-/// <summary>
-/// The write needs one Idempotency-Key header holding a UUID; without it the answer is a 400 validation problem
-/// listing it with any other invalid field. Read the key with <see cref="WriteHeaders.IdempotencyKey"/>.
-/// </summary>
+/// <summary>The write needs one Idempotency-Key header holding a UUID. Read it with <see cref="WriteHeaders.IdempotencyKey"/>.</summary>
 [AttributeUsage(AttributeTargets.Method)]
-public sealed class RequireIdempotencyKeyAttribute : Attribute, IActionFilter, IOrderedFilter
+public sealed class RequireIdempotencyKeyAttribute : Attribute
 {
     public const string Header = "Idempotency-Key";
+}
 
-    /// <summary>Before [ApiController]'s automatic 400 (-2000), so one response lists every problem.</summary>
-    public int Order => -3000;
-
-    public void OnActionExecuting(ActionExecutingContext context)
-    {
-        var values = context.HttpContext.Request.Headers[Header];
-        if (values.Count == 1 && Guid.TryParse(values[0], out var key) && key != Guid.Empty)
-        {
-            context.HttpContext.Items[WriteHeaders.IdempotencyKeyItem] = key;
-            return;
-        }
-
-        context.ModelState.AddModelError(Header, "Send one Idempotency-Key header with a new UUID for each distinct write; repeat it only to retry.");
-        context.Result = WriteHeaders.ValidationProblem(context);
-    }
-
-    public void OnActionExecuted(ActionExecutedContext context) { }
+/// <summary>The write needs If-Match with the ETag last read. Read the version with <see cref="WriteHeaders.IfMatchVersion"/>.</summary>
+[AttributeUsage(AttributeTargets.Method)]
+public sealed class RequireIfMatchAttribute : Attribute
+{
+    public const string Header = "If-Match";
 }
 
 /// <summary>
-/// The write needs If-Match with the ETag last read: 428 when it is missing, a 400 validation problem when it is not
-/// one strong ETag of this API. Read the version with <see cref="WriteHeaders.IfMatchVersion"/>.
+/// Enforces both attributes in one place: 428 when a required If-Match is missing; otherwise one 400 validation problem
+/// listing every malformed header next to any binding error. Does not depend on [ApiController]'s automatic 400.
 /// </summary>
-[AttributeUsage(AttributeTargets.Method)]
-public sealed class RequireIfMatchAttribute : Attribute, IActionFilter, IOrderedFilter
+internal sealed class WriteHeadersFilter(ProblemDetailsFactory problems) : IActionFilter
 {
-    public const string Header = "If-Match";
-
-    public int Order => -3000;
+    /// <summary>Register with this order: before [ApiController]'s automatic 400 (-2000), so one response lists every problem.</summary>
+    public const int Order = -3000;
 
     public void OnActionExecuting(ActionExecutingContext context)
     {
+        var metadata = context.ActionDescriptor.EndpointMetadata;
+        var needsKey = metadata.OfType<RequireIdempotencyKeyAttribute>().Any();
+        var needsIfMatch = metadata.OfType<RequireIfMatchAttribute>().Any();
+        if (!needsKey && !needsIfMatch)
+            return;
+
         var http = context.HttpContext;
-        var values = http.Request.Headers.IfMatch;
-        if (string.IsNullOrWhiteSpace(values))
+        if (needsIfMatch && string.IsNullOrWhiteSpace(http.Request.Headers.IfMatch))
         {
-            var problems = http.RequestServices.GetRequiredService<ProblemDetailsFactory>();
             var problem = problems.CreateProblemDetails(http, StatusCodes.Status428PreconditionRequired, "If-Match required.",
                 ProblemTypes.PreconditionRequired, "Send If-Match with the ETag of the transfer as you last read it.");
             context.Result = new ObjectResult(problem) { StatusCode = problem.Status, ContentTypes = { "application/problem+json" } };
             return;
         }
 
-        if (values.Count == 1 && EntityTags.TryParse(values[0], out var version))
+        if (needsKey)
         {
-            http.Items[WriteHeaders.IfMatchItem] = version;
-            return;
+            var keys = http.Request.Headers[RequireIdempotencyKeyAttribute.Header];
+            if (keys.Count == 1 && Guid.TryParse(keys[0], out var key) && key != Guid.Empty)
+                http.Items[WriteHeaders.IdempotencyKeyItem] = key;
+            else
+                context.ModelState.AddModelError(RequireIdempotencyKeyAttribute.Header, "Send one Idempotency-Key header with a new UUID for each distinct write; repeat it only to retry.");
         }
 
-        context.ModelState.AddModelError(Header, "Send the one strong ETag this API returned, quotes included.");
-        context.Result = WriteHeaders.ValidationProblem(context);
+        if (needsIfMatch)
+        {
+            var tags = http.Request.Headers.IfMatch;
+            if (tags.Count == 1 && EntityTags.TryParse(tags[0], out var version))
+                http.Items[WriteHeaders.IfMatchItem] = version;
+            else
+                context.ModelState.AddModelError(RequireIfMatchAttribute.Header, "Send the one strong ETag this API returned, quotes included.");
+        }
+
+        if (!context.ModelState.IsValid)
+        {
+            var problem = problems.CreateValidationProblemDetails(http, context.ModelState);
+            context.Result = new BadRequestObjectResult(problem) { ContentTypes = { "application/problem+json" } };
+        }
     }
 
     public void OnActionExecuted(ActionExecutedContext context) { }
@@ -82,12 +85,4 @@ public static class WriteHeaders
     /// <summary>The rowversion named by If-Match; the action must carry [RequireIfMatch].</summary>
     public static byte[] IfMatchVersion(this HttpContext http) =>
         http.Items[IfMatchItem] as byte[] ?? throw new InvalidOperationException("Mark the action with [RequireIfMatch].");
-
-    /// <summary>The same 400 [ApiController] would give, with the header errors next to any binding errors.</summary>
-    internal static IActionResult ValidationProblem(ActionExecutingContext context)
-    {
-        var problems = context.HttpContext.RequestServices.GetRequiredService<ProblemDetailsFactory>();
-        var problem = problems.CreateValidationProblemDetails(context.HttpContext, context.ModelState);
-        return new BadRequestObjectResult(problem) { ContentTypes = { "application/problem+json" } };
-    }
 }

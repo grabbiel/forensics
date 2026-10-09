@@ -41,6 +41,15 @@ public sealed class WriteHeaderTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Both_malformed_headers_are_listed_in_one_problem()
+    {
+        var problem = await ProblemAsync(await SendAsync("not-a-uuid", "W/\"00000000000007d1\"", n: 9), HttpStatusCode.BadRequest);
+
+        var errors = problem.GetProperty("errors").EnumerateObject().Select(e => e.Name).Order();
+        Assert.Equal(["Idempotency-Key", "If-Match", "n"], errors);
+    }
+
+    [Fact]
     public async Task Without_if_match_the_write_answers_428()
     {
         var problem = await ProblemAsync(await SendAsync(Key, ifMatch: null), HttpStatusCode.PreconditionRequired);

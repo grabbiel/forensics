@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using EvidenceChain.Api.Auth;
+using EvidenceChain.Api.Http;
 using EvidenceChain.Api.OpenApi;
 using EvidenceChain.Api.Problems;
 using EvidenceChain.Api.Security;
@@ -26,6 +27,7 @@ builder.Services.AddControllers(o =>
     {
         o.ModelMetadataDetailsProviders.Add(new SystemTextJsonValidationMetadataProvider());
         o.Conventions.Add(new ProblemResponsesConvention());
+        o.Filters.Add<WriteHeadersFilter>(WriteHeadersFilter.Order);
     })
     .AddJsonOptions(o => ConfigureJson(o.JsonSerializerOptions));
 builder.Services.ConfigureHttpJsonOptions(o => ConfigureJson(o.SerializerOptions));
