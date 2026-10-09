@@ -9,6 +9,7 @@ namespace EvidenceChain.IntegrationTests;
 [Collection(nameof(SqlCollection))]
 public sealed class DailyIndexAllocatorTests(ApiFactory factory)
 {
+    private static readonly Lock DatabaseLock = new();
     private static Task<string>? _database;
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
@@ -116,7 +117,8 @@ public sealed class DailyIndexAllocatorTests(ApiFactory factory)
     private async Task<AppDbContext> OpenAsync()
     {
         Assert.SkipWhen(factory.SkipReason is not null, factory.SkipReason ?? "");
-        _database ??= PrepareAsync();
+        lock (DatabaseLock)
+            _database ??= PrepareAsync(); // the parallel tests may be first here, on several threads at once
         return SqlServerSetup.CreateContext(await _database);
     }
 
