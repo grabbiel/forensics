@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="EvidenceChain.IntegrationTests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\EvidenceChain.Infrastructure\EvidenceChain.Infrastructure.csproj" />
+    <ProjectReference Include="..\EvidenceChain.SyntheticData\EvidenceChain.SyntheticData.csproj" />
+  </ItemGroup>
+
+</Project>
