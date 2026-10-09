@@ -142,6 +142,34 @@ describe('InboxPage', () => {
     expect(await screen.findByRole('table')).toBeInTheDocument()
   })
 
+  it('asks to wait after a 429, and offers the retry only once the wait is over', async () => {
+    const throttled = async () =>
+      new Response(JSON.stringify({ status: 429, type: 'urn:evidence-chain:problem:rate-limited' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/problem+json', 'Retry-After': '1' },
+      })
+    const fetchMock = vi.fn<typeof fetch>(withPeople(throttled))
+    vi.stubGlobal('fetch', fetchMock)
+    renderAt('/?q=firewall')
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Demasiadas solicitudes')
+    expect(alert).toHaveTextContent('Espera 1 s antes de reintentar.')
+    const retry = within(alert).getByRole('button', { name: 'Reintentar' })
+    expect(retry).toHaveAttribute('aria-disabled', 'true')
+    await userEvent.click(retry)
+    expect(inboxCalls(fetchMock)).toHaveLength(1)
+    // The search box sits outside the inbox's error boundary, so what was typed stays.
+    expect(screen.getByRole('searchbox')).toHaveValue('firewall')
+
+    fetchMock.mockImplementation(withPeople(async () => reply(200, page(rows))))
+    await waitFor(() => expect(retry).toHaveAttribute('aria-disabled', 'false'), { timeout: 2_000 })
+    expect(alert).toHaveTextContent('Ya puedes reintentar.')
+    await userEvent.click(retry)
+
+    expect(await screen.findByRole('table')).toBeInTheDocument()
+  })
+
   it.each([new TypeError('Failed to fetch'), new DOMException('timed out', 'TimeoutError')])('reports a network failure or a timeout in plain words (%s)', async (failure) => {
     vi.stubGlobal('fetch', vi.fn<typeof fetch>(withPeople(async () => Promise.reject(failure))))
     renderAt()
