@@ -1,10 +1,12 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { uuidv7 } from '../../lib/uuid'
-import { clearIntent, getIntent, startIntent } from './pendingIntent'
+import { clearAllIntents, clearIntent, getIntent, intentScope, startIntent } from './pendingIntent'
+
+const blocked = () => {
+  throw new DOMException('blocked', 'SecurityError')
+}
 
 describe('pending intent', () => {
-  afterEach(() => clearIntent('request:LOG1'))
-
   it('reuses the key for the same write, survives in sessionStorage, and is gone once cleared', () => {
     const first = startIntent('request:LOG1', { toCustodianId: '5', reason: 'Peritaje' })
     const again = startIntent('request:LOG1', { reason: 'Peritaje', toCustodianId: '5' }) // field order does not matter
@@ -23,12 +25,36 @@ describe('pending intent', () => {
     expect(getIntent('request:LOG1')?.fields.toCustodianId).toBe('6')
   })
 
-  it('keeps intents in memory when storage is blocked', () => {
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new DOMException('blocked', 'SecurityError')
-    })
+  it('keeps intents in memory when storage is blocked, for writes and for reads', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(blocked)
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(blocked)
     const intent = startIntent('request:LOG1', { toCustodianId: '5', reason: 'x' })
     expect(getIntent('request:LOG1')?.idempotencyKey).toBe(intent.idempotencyKey)
+  })
+
+  it('never lets an older stored intent win over a newer one it could not store', () => {
+    startIntent('request:LOG1', { toCustodianId: '5', reason: 'x' })
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(blocked)
+    const newer = startIntent('request:LOG1', { toCustodianId: '6', reason: 'y' })
+    expect(getIntent('request:LOG1')?.idempotencyKey).toBe(newer.idempotencyKey)
+  })
+
+  it('clears only the intent sent with a given key, so a late answer leaves a newer write alone', () => {
+    const first = startIntent('request:LOG1', { toCustodianId: '5', reason: 'x' })
+    const newer = startIntent('request:LOG1', { toCustodianId: '6', reason: 'y' })
+    clearIntent('request:LOG1', first.idempotencyKey)
+    expect(getIntent('request:LOG1')?.idempotencyKey).toBe(newer.idempotencyKey)
+  })
+
+  it('keeps each user’s intents apart and forgets them all on sign-out', () => {
+    startIntent(intentScope('request', 1, 'LOG1'), { toCustodianId: '5', reason: 'x' })
+    sessionStorage.setItem('unrelated', 'kept')
+    expect(getIntent(intentScope('request', 2, 'LOG1'))).toBeUndefined()
+
+    clearAllIntents()
+
+    expect(getIntent(intentScope('request', 1, 'LOG1'))).toBeUndefined()
+    expect(sessionStorage.getItem('unrelated')).toBe('kept')
   })
 })
 

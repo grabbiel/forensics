@@ -14,11 +14,12 @@ import { AppShell, DetailLoading, PageLoading } from './layout/AppShell'
 const EVIDENCE_NOT_FOUND = { title: 'Evidencia no encontrada', detail: 'No existe ninguna evidencia con ese código.' }
 
 /**
- * The router revalidates loaders only after successful actions. A write refused with a 409 or left without an answer
- * (503) also changes what the evidence page should show, so it reads the evidence again then as well.
+ * The router revalidates loaders only after successful actions. On the evidence page any answer to a write says
+ * something about its current state (a 409 or 400 that it moved on, an unknown outcome that it may have), so the page
+ * reads itself again after every write.
  */
 export function revalidateEvidence({ actionStatus, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
-  return actionStatus === 409 || actionStatus === 503 || defaultShouldRevalidate
+  return actionStatus !== undefined || defaultShouldRevalidate
 }
 
 /** Route table, shared by the browser router and the tests' memory router. */

@@ -58,6 +58,8 @@ function describe(error: unknown, notFound: NotFoundText): { title: string; deta
     return { title: 'No se pudo cargar la información', detail: `El servidor respondió con el código ${error.status}.`, retry: true }
   }
   if (isRouteErrorResponse(error)) return { title: `Error ${error.status}`, detail: 'No se pudo completar la solicitud.', retry: true }
-  if (error instanceof TypeError) return { title: 'Sin conexión con el servidor', detail: 'Comprueba tu red e inténtalo de nuevo.', retry: true }
+  // A failed fetch, or a read that timed out.
+  if (error instanceof TypeError || (error instanceof DOMException && error.name === 'TimeoutError'))
+    return { title: 'Sin conexión con el servidor', detail: 'Comprueba tu red e inténtalo de nuevo.', retry: true }
   return { title: 'Algo salió mal', detail: 'Inténtalo de nuevo en unos segundos.', retry: true }
 }

@@ -1,31 +1,38 @@
 import { data, type ActionFunctionArgs } from 'react-router'
-import { ApiError, type ProblemDetails } from '../../api/client'
+import { ApiError, withTimeout, type ProblemDetails } from '../../api/client'
 import { decideTransfer, requestTransfer, type Decision, type TransferResource } from '../../api/transfers'
 import { signedIn } from '../../auth/guard'
+import { clearIntent, intentScope } from './pendingIntent'
 
 /** How long a write may take before its outcome counts as unknown. */
 export const WRITE_TIMEOUT_MS = 15_000
 
+export const PROBLEM = {
+  inFlight: 'urn:evidence-chain:problem:idempotency-in-flight',
+  concurrentWrite: 'urn:evidence-chain:problem:concurrent-write',
+  staleVersion: 'urn:evidence-chain:problem:stale-version',
+} as const
+
+export type WriteKind = 'request' | Decision
+
 /**
- * What a transfer action answers. Never thrown, so the page stays mounted and can explain the result:
+ * What a transfer action answers, naming the write it was. Never thrown, so the page stays mounted and can explain it:
  * - done: the server did it (or had already done it, when it repeats an earlier request with the same key);
  * - refused: the server answered with a problem; a 409 carries the transfer's current state;
- * - unknown: no answer (network failure or timeout); the server may or may not have done it, so retry with the same key.
+ * - unknown: no answer, a timeout, a server error, or the first send still running (status 0 when there was no
+ *   answer at all). The server may or may not have done it, so the intent stays for a retry with the same key.
  */
 export type WriteResult =
-  | { outcome: 'done'; transfer: TransferResource; replayed: boolean }
-  | { outcome: 'refused'; status: number; problem?: ProblemDetails }
-  | { outcome: 'unknown' }
+  | { outcome: 'done'; write: WriteKind; transfer: TransferResource; replayed: boolean }
+  | { outcome: 'refused'; write: WriteKind; status: number; problem?: ProblemDetails }
+  | { outcome: 'unknown'; write: WriteKind; status: number; problem?: ProblemDetails }
 
 /** POST /evidence/:id/transfer: form fields toCustodianId, reason, idempotencyKey. */
 export async function requestTransferAction({ request, params }: ActionFunctionArgs) {
   const form = await request.formData()
-  return write(request, evidencePage(params.id!), (signal) =>
-    requestTransfer(
-      { evidenceCode: params.id!, toCustodianId: Number(form.get('toCustodianId')), reason: String(form.get('reason') ?? '') },
-      String(form.get('idempotencyKey') ?? ''),
-      signal,
-    ),
+  const code = params.id!
+  return write(request, 'request', code, String(form.get('idempotencyKey') ?? ''), (key, signal) =>
+    requestTransfer({ evidenceCode: code, toCustodianId: Number(form.get('toCustodianId')), reason: String(form.get('reason') ?? '') }, key, signal),
   )
 }
 
@@ -34,47 +41,52 @@ export function decisionAction(decision: Decision) {
   return async ({ request, params }: ActionFunctionArgs) => {
     const form = await request.formData()
     const text = String(form.get(decision === 'accept' ? 'notes' : 'reason') ?? '')
-    return write(request, evidencePage(String(form.get('evidenceCode') ?? '')), (signal) =>
+    return write(request, decision, String(form.get('evidenceCode') ?? ''), String(form.get('idempotencyKey') ?? ''), (key, signal) =>
       decideTransfer(
         Number(params.transferId),
         decision,
         decision === 'accept' ? { notes: text || undefined } : { reason: text },
-        { idempotencyKey: String(form.get('idempotencyKey') ?? ''), etag: String(form.get('etag') ?? '') },
+        { idempotencyKey: key, etag: String(form.get('etag') ?? '') },
         signal,
       ),
     )
   }
 }
 
-/** The page a write is made from, to come back to if the user must sign in again. */
-const evidencePage = (code: string) => (code ? `/evidence/${encodeURIComponent(code)}` : '/')
-
-/** The router's signal, also aborted after `ms`; a fallback where AbortSignal.any is missing (Safari < 17.4). */
-function withTimeout(signal: AbortSignal, ms: number): AbortSignal {
-  const timeout = AbortSignal.timeout(ms)
-  if (typeof AbortSignal.any === 'function') return AbortSignal.any([signal, timeout])
-  const controller = new AbortController()
-  const abort = (source: AbortSignal) => () => controller.abort(source.reason)
-  signal.addEventListener('abort', abort(signal), { once: true })
-  timeout.addEventListener('abort', abort(timeout), { once: true })
-  return controller.signal
-}
-
 /**
  * Runs a write and turns every ending into a WriteResult. No retries here: a refused write is an answer, and a write
  * with no answer is for the user to retry, with the same Idempotency-Key, once they have seen the current state.
- * Statuses mirror the answer, so the router only revalidates loaders after a success.
+ * Statuses mirror the answer (503 for unknown), so the evidence page knows to read itself again.
  */
-async function write(request: Request, page: string, send: (signal: AbortSignal) => Promise<{ status: number; body: TransferResource; headers: Headers }>) {
-  return signedIn(request, async () => {
+async function write(
+  request: Request,
+  kind: WriteKind,
+  code: string,
+  key: string,
+  send: (key: string, signal: AbortSignal) => Promise<{ status: number; body: TransferResource; headers: Headers }>,
+) {
+  const page = code ? `/evidence/${encodeURIComponent(code)}` : '/'
+  return signedIn(request, async (session) => {
+    // Cleared here, not by the page: the answer may land after the user has left it.
+    const settled = () => clearIntent(intentScope(kind === 'request' ? 'request' : 'decision', session.user.id, code), key)
     try {
-      const sent = await send(withTimeout(request.signal, WRITE_TIMEOUT_MS))
-      const result: WriteResult = { outcome: 'done', transfer: sent.body, replayed: sent.headers.get('Idempotent-Replayed') === 'true' }
-      return data(result, { status: sent.status })
+      const sent = await send(key, withTimeout(request.signal, AbortSignal.timeout(WRITE_TIMEOUT_MS)))
+      settled()
+      return data<WriteResult>({ outcome: 'done', write: kind, transfer: sent.body, replayed: sent.headers.get('Idempotent-Replayed') === 'true' }, { status: sent.status })
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) throw error // signedIn sends the user to sign in again
-      if (error instanceof ApiError) return data<WriteResult>({ outcome: 'refused', status: error.status, problem: error.problem }, { status: error.status })
-      return data<WriteResult>({ outcome: 'unknown' }, { status: 503 })
+      if (error instanceof ApiError && !outcomeUnknown(error)) {
+        // Nothing was saved and the same key may be sent again.
+        if (error.problem?.type !== PROBLEM.concurrentWrite) settled()
+        return data<WriteResult>({ outcome: 'refused', write: kind, status: error.status, problem: error.problem }, { status: error.status })
+      }
+      const answered = error instanceof ApiError ? { status: error.status, problem: error.problem } : { status: 0 }
+      return data<WriteResult>({ outcome: 'unknown', write: kind, ...answered }, { status: 503 })
     }
   }, page)
+}
+
+/** A server error may come after the write committed, and an in-flight answer means the first send is still running. */
+function outcomeUnknown(error: ApiError): boolean {
+  return error.status >= 500 || error.problem?.type === PROBLEM.inFlight
 }

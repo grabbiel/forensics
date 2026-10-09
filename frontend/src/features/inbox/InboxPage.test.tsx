@@ -142,8 +142,8 @@ describe('InboxPage', () => {
     expect(await screen.findByRole('table')).toBeInTheDocument()
   })
 
-  it('reports a network failure in plain words', async () => {
-    vi.stubGlobal('fetch', vi.fn<typeof fetch>(withPeople(async () => Promise.reject(new TypeError('Failed to fetch')))))
+  it.each([new TypeError('Failed to fetch'), new DOMException('timed out', 'TimeoutError')])('reports a network failure or a timeout in plain words (%s)', async (failure) => {
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(withPeople(async () => Promise.reject(failure))))
     renderAt()
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Sin conexión con el servidor')

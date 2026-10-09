@@ -573,19 +573,6 @@ svg {
   font: inherit;
 }
 
-.notice {
-  margin: 0 0 16px;
-  padding: 10px 12px;
-  border-radius: var(--radius-control);
-  background: var(--fill);
-}
-
-.notice--error {
-  background: color-mix(in srgb, var(--danger) 9%, var(--surface));
-  color: var(--text);
-  box-shadow: inset 3px 0 0 var(--danger);
-}
-
 /* ---- Account (header) ---- */
 
 .account {
@@ -630,6 +617,10 @@ svg {
 .login__panel {
   width: min(100%, 460px);
   padding: 22px 20px 24px;
+}
+
+.login__panel .notice {
+  margin-bottom: 16px;
 }
 
 .personas {
@@ -1049,28 +1040,6 @@ svg {
   color: var(--text-2);
 }
 
-.pending {
-  display: flex;
-  gap: 10px;
-  margin: 16px 20px 0;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-surface);
-}
-
-.pending > svg {
-  flex: none;
-  color: var(--warning);
-}
-
-.pending p {
-  margin: 0;
-}
-
-.pending__reason {
-  color: var(--text-2);
-}
-
 .facts__wide {
   grid-column: 1 / -1;
 }
@@ -1150,17 +1119,30 @@ svg {
   color: var(--text-2);
 }
 
+/* Outcomes of a write: the sign-in form's error and the transfer panel's answers. */
 .notice {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 8px 10px;
   width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-control);
+  background: var(--fill);
+  color: var(--text);
 }
 
 .notice p {
   flex: 1;
   margin: 0;
+}
+
+.notice__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
 }
 
 .notice > svg {
@@ -1458,7 +1440,6 @@ svg {
     padding-inline: 16px;
   }
 
-  .pending,
   .transfers {
     margin-inline: 16px;
   }

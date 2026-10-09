@@ -2,8 +2,9 @@ import { uuidv7 } from '../../lib/uuid'
 
 /**
  * A write the user started whose outcome is not known yet. It lives outside any dialog, in sessionStorage and keyed by
- * evidence, so closing and reopening a dialog, a retry, or a reload all send the same Idempotency-Key: the server then
- * answers with what it already did instead of doing it twice. It is cleared once the server's answer is known.
+ * user and evidence, so closing and reopening a dialog, a retry, or a reload all send the same Idempotency-Key: the
+ * server then answers with what it already did instead of doing it twice. It is cleared once the server's answer is
+ * known, by the action that got it, so an answer that lands after the page is gone still clears it.
  */
 export interface PendingIntent {
   idempotencyKey: string
@@ -14,9 +15,16 @@ export interface PendingIntent {
   fields: Record<string, string>
 }
 
+export type IntentKind = 'request' | 'decision'
+
 const PREFIX = 'evidence-chain:intent:'
 // Where sessionStorage is blocked, intents still survive dialogs, just not a reload.
 const memory = new Map<string, PendingIntent>()
+
+/** One user's request, or decision, on one evidence. Per user, as the server's keys are. */
+export function intentScope(kind: IntentKind, userId: number, code: string): string {
+  return `${kind}:${userId}:${code}`
+}
 
 export function getIntent(scope: string): PendingIntent | undefined {
   try {
@@ -39,14 +47,32 @@ export function startIntent(scope: string, fields: Record<string, string>, now =
   try {
     sessionStorage.setItem(PREFIX + scope, JSON.stringify(intent))
   } catch {
-    // Kept in memory only.
+    removeStored(scope) // an older stored intent would otherwise win over this one
   }
   return intent
 }
 
-/** The server's answer is known (done or refused): the next write starts a new intent. */
-export function clearIntent(scope: string): void {
+/**
+ * The server's answer is known: the next write starts a new intent. With `key`, only the intent sent with that key is
+ * cleared, so a late answer cannot clear a newer write's intent.
+ */
+export function clearIntent(scope: string, key?: string): void {
+  if (key !== undefined && getIntent(scope)?.idempotencyKey !== key) return
   memory.delete(scope)
+  removeStored(scope)
+}
+
+/** Forgets every intent in this tab (sign-out). */
+export function clearAllIntents(): void {
+  memory.clear()
+  try {
+    for (const name of Object.keys(sessionStorage)) if (name.startsWith(PREFIX)) sessionStorage.removeItem(name)
+  } catch {
+    // Nothing stored.
+  }
+}
+
+function removeStored(scope: string): void {
   try {
     sessionStorage.removeItem(PREFIX + scope)
   } catch {

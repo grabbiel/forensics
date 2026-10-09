@@ -52,7 +52,7 @@ export function EvidencePage() {
 
       {detail.anomalies.length > 0 && <Anomalies anomalies={detail.anomalies} />}
       <Facts detail={detail} />
-      <TransferPanel detail={detail} chain={chain.events} custodians={custodians} user={user} headingRef={headingRef} />
+      <TransferPanel key={detail.code} detail={detail} chain={chain.events} custodians={custodians} user={user} headingRef={headingRef} />
       <Timeline events={chain.events} report={report} />
     </article>
   )
