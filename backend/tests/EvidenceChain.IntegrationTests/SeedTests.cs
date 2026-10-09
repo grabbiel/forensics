@@ -6,6 +6,8 @@ using EvidenceChain.Domain.Catalog;
 using EvidenceChain.Domain.Integrity;
 using EvidenceChain.Infrastructure.Persistence;
 using EvidenceChain.SyntheticData;
+using System.Net;
+using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using DatasetLoader = seeder::EvidenceChain.Seeder.DatasetLoader;
 using SeedMode = seeder::EvidenceChain.Seeder.SeedMode;
@@ -154,6 +156,37 @@ public sealed class SeedTests(ApiFactory factory)
         db.Evidence.Add(next);
         await db.SaveChangesAsync(Token);
         Assert.Equal(1_001, next.EvidenceId);
+
+    }
+
+    [Fact]
+    public async Task Writes_after_the_seed_keep_it_but_a_missing_seeded_row_is_refused_even_when_masked()
+    {
+        const string database = "EvidenceChainSeedAfterWrites";
+        var api = await factory.SeededApiAsync(database);
+        var admin = factory.ConnectionStringFor(database);
+
+        // One custody request through the API appends an event past the seeded ones.
+        var evidence = Dataset.Value.Evidences.First(e => e.Fixture is null
+            && !Dataset.Value.Transfers.Any(t => t.EvidenceCode == e.Code && t.Status == SyntheticTransferStatus.Pending));
+        var recipient = SyntheticPeople.All.First(u => u.Role == SyntheticRole.Custodio && u.UserName != evidence.CurrentCustodian);
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/custody-transfers")
+        {
+            Content = JsonContent.Create(new { evidenceCode = evidence.Code, toCustodianId = recipient.Id, reason = "Análisis" }),
+        };
+        request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString());
+        Assert.Equal(HttpStatusCode.Created, (await api.CreateClientAs(TestUsers.Investigator).SendAsync(request, Token)).StatusCode);
+        Assert.True((await DatasetLoader.SeedAsync(admin, Dataset.Value, Keys, SeedMode.IfEmpty, "seed --if-empty", Token)).AlreadySeeded);
+
+        // A seeded event removed behind the append-only trigger, the total still above the seed's: refused.
+        await using (var db = SqlServerSetup.CreateContext(admin))
+            await db.Database.ExecuteSqlRawAsync("""
+                DISABLE TRIGGER dbo.TR_CustodyEvents_AppendOnly ON dbo.CustodyEvents;
+                DELETE dbo.CustodyEvents WHERE CustodyEventId = 2;
+                ENABLE TRIGGER dbo.TR_CustodyEvents_AppendOnly ON dbo.CustodyEvents;
+                """, Token);
+        var error = await Assert.ThrowsAsync<ArgumentException>(() => DatasetLoader.SeedAsync(admin, Dataset.Value, Keys, SeedMode.IfEmpty, "seed --if-empty", Token));
+        Assert.Contains("1 of its events are gone", error.Message);
     }
 
     /// <summary>Two databases loaded once with the reference dataset and shared by the read-only tests.</summary>

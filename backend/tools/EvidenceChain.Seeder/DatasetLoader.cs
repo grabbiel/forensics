@@ -75,7 +75,12 @@ internal static class DatasetLoader
         return new SeedResult(false, rows.Users.Rows.Count, rows.Evidence.Rows.Count, rows.CustodyTransfers.Rows.Count, rows.CustodyEvents.Rows.Count);
     }
 
-    /// <summary>True only for a completed run of the same seed and sizes whose evidence and events are all still there.</summary>
+    /// <summary>
+    /// True only for a completed run of the same seed and sizes whose evidence and events are all still there, checked by
+    /// their ids (the load keeps ids 1 to N). Rows written afterwards are fine: the API appends events and the app is
+    /// meant to be used between restarts. A missing seeded row means a damaged load, whatever was added since.
+    /// The anchor is left out on purpose: it defaults to today, so a restart on a later day is still the same seed.
+    /// </summary>
     private static async Task<bool> HoldsThisSeedAsync(SqlConnection connection, SqlTransaction transaction, SyntheticDataset dataset, CancellationToken cancellationToken)
     {
         var runs = await ScalarAsync<int>(connection, transaction,
@@ -84,10 +89,14 @@ internal static class DatasetLoader
         if (runs == 0)
             return false;
 
-        var (evidences, events) = (await ScalarAsync<int>(connection, transaction, "SELECT COUNT(*) FROM dbo.Evidence", cancellationToken),
-            await ScalarAsync<int>(connection, transaction, "SELECT COUNT(*) FROM dbo.CustodyEvents", cancellationToken));
+        var (evidences, events) = (
+            await ScalarAsync<int>(connection, transaction, "SELECT COUNT(*) FROM dbo.Evidence WHERE EvidenceId BETWEEN 1 AND @n", cancellationToken,
+                ("@n", (long)dataset.Evidences.Count)),
+            await ScalarAsync<int>(connection, transaction, "SELECT COUNT(*) FROM dbo.CustodyEvents WHERE CustodyEventId BETWEEN 1 AND @n", cancellationToken,
+                ("@n", (long)dataset.Events.Count)));
         if ((evidences, events) != (dataset.Evidences.Count, dataset.Events.Count))
-            throw new ArgumentException($"Seed {dataset.Seed} was loaded here, but the database now holds {evidences} evidences and {events} events; pass --reset to reload it.");
+            throw new ArgumentException(
+                $"Seed {dataset.Seed} was loaded here, but {dataset.Evidences.Count - evidences} of its evidences and {dataset.Events.Count - events} of its events are gone; pass --reset to reload it.");
         return true;
     }
 

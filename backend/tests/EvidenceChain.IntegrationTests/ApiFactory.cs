@@ -117,6 +117,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         ConnectionString = new SqlConnectionStringBuilder(AdminConnectionString) { UserID = AppLogin, Password = AppPassword }.ConnectionString;
     }
 
+    /// <summary>sa connection to another database on the test server.</summary>
+    public string ConnectionStringFor(string database) => new SqlConnectionStringBuilder(AdminConnectionString) { InitialCatalog = database }.ConnectionString;
+
     /// <summary>A freshly migrated, empty database on the same server, for tests that need to write freely.</summary>
     public async Task<string> CreateDatabaseAsync(string name, CancellationToken cancellationToken = default)
     {
