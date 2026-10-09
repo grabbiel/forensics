@@ -13,6 +13,7 @@ echo "2/3 Preparing database (RCSI, app login)"
 dotnet seeder/EvidenceChain.Seeder.dll prepare --connection "$ADMIN_CONNECTION" \
   --app-login "$APP_DB_LOGIN" --app-password "$APP_DB_PASSWORD"
 
-echo "3/3 Loading data"
-# Day 2 replaces 'tracer' with: seed --if-empty --seed 42
-dotnet seeder/EvidenceChain.Seeder.dll tracer --connection "$ADMIN_CONNECTION"
+echo "3/3 Loading the synthetic dataset (skipped when this seed is already loaded)"
+# The anchor defaults to today 00:00 UTC, so only the overdue fixture is overdue on any day.
+dotnet seeder/EvidenceChain.Seeder.dll seed --if-empty --seed 42 --profile "${SEED_PROFILE:-reference}" \
+  --connection "$ADMIN_CONNECTION"
