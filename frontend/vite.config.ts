@@ -5,8 +5,9 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [react()],
   server: {
-    // Same-origin /api in dev, like nginx in compose; the API's launch profile listens on 5080.
-    proxy: { '/api': 'http://localhost:5080' },
+    // Same-origin /api in dev, like nginx in compose: the API's launch profile listens on 5080;
+    // API_PROXY_TARGET=http://localhost:8081 uses the compose API instead.
+    proxy: { '/api': process.env.API_PROXY_TARGET ?? 'http://localhost:5080' },
   },
   test: {
     environment: 'jsdom',

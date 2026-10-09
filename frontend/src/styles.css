@@ -530,6 +530,257 @@ svg {
   background: var(--fill);
 }
 
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: var(--fill);
+  color: var(--text);
+}
+
+.field {
+  height: 36px;
+  min-width: 0;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.notice {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: var(--radius-control);
+  background: var(--fill);
+}
+
+.notice--error {
+  background: color-mix(in srgb, var(--danger) 9%, var(--surface));
+  color: var(--text);
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+/* ---- Account (header) ---- */
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.account__who {
+  display: grid;
+  text-align: right;
+  line-height: 1.2;
+}
+
+.account__name {
+  font-weight: 700;
+}
+
+.account__role {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+/* ---- Sign in ---- */
+
+.login {
+  min-height: 100vh;
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: 20px;
+  padding: 12vh 16px 40px;
+}
+
+.login__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.login__panel {
+  width: min(100%, 460px);
+  padding: 22px 20px 24px;
+}
+
+.personas {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.persona {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-surface);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.persona:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.persona:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.persona > svg:first-child {
+  flex: none;
+  color: var(--accent);
+}
+
+.persona__text {
+  display: grid;
+  flex: 1;
+  gap: 1px;
+}
+
+.persona__name {
+  font-weight: 700;
+}
+
+.persona__role {
+  color: var(--accent-fill);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.persona__can {
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.persona__go {
+  flex: none;
+  color: var(--text-3);
+}
+
+.login__other {
+  display: grid;
+  gap: 6px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.login__other-row {
+  display: flex;
+  gap: 8px;
+}
+
+.login__other-row .field {
+  flex: 1;
+}
+
+/* ---- Evidence detail ---- */
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.back-link:hover {
+  color: var(--text);
+}
+
+.evidence__code {
+  font-family: var(--mono);
+  letter-spacing: 0;
+}
+
+.evidence__description {
+  margin: 0;
+  padding: 0 20px 16px;
+  color: var(--text-2);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px 20px;
+  margin: 0;
+  padding: 14px 20px;
+  border-block: 1px solid var(--line-soft);
+  background: var(--fill);
+}
+
+.facts dt {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.facts dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+}
+
+.section-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.timeline {
+  padding: 18px 20px 22px;
+}
+
+.timeline__list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline__item {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.timeline__seq {
+  color: var(--text-3);
+  font-family: var(--mono);
+}
+
+.timeline__item time {
+  color: var(--text-2);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- Skeleton (first load) ---- */
 
 .skeleton {

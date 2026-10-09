@@ -1,9 +1,9 @@
 import { SortDescending, Tray } from '@phosphor-icons/react'
 import { Fragment, useRef } from 'react'
-import { useLoaderData, useNavigation } from 'react-router'
+import { Link, useLoaderData, useNavigation } from 'react-router'
 import { EVIDENCE_TYPES, type EvidenceSummary, type EvidenceType } from '../../api/evidence'
 import { TypeBadge } from '../../components/TypeBadge'
-import { describeEmpty, describeResults, evidenceCount, formatUtcDate } from '../../lib/format'
+import { describeEmpty, describeResults, evidenceCount, formatUtcDateTime } from '../../lib/format'
 import { usePendingSearch, useUpdateSearch } from '../../lib/useUpdateSearch'
 import { readFilter, type inboxLoader } from './inboxLoader'
 
@@ -106,8 +106,11 @@ function EvidenceTable({ rows }: { rows: EvidenceSummary[] }) {
             <th scope="col" role="columnheader">
               Descripción
             </th>
+            <th scope="col" role="columnheader">
+              Custodio
+            </th>
             <th scope="col" role="columnheader" className="table__num">
-              Registrada
+              Último evento
             </th>
           </tr>
         </thead>
@@ -115,7 +118,7 @@ function EvidenceTable({ rows }: { rows: EvidenceSummary[] }) {
           {rows.map((row) => (
             <tr key={row.code} role="row">
               <th scope="row" role="rowheader" className="table__code">
-                {row.code}
+                <Link to={`/evidence/${row.code}`}>{row.code}</Link>
               </th>
               <td role="cell" className="table__type">
                 <TypeBadge type={row.typeCode} />
@@ -123,8 +126,11 @@ function EvidenceTable({ rows }: { rows: EvidenceSummary[] }) {
               <td role="cell" className="table__desc">
                 {row.description}
               </td>
+              <td role="cell" className="table__custodian">
+                {row.currentCustodian.displayName}
+              </td>
               <td role="cell" className="table__num">
-                <time dateTime={row.registeredOn}>{formatUtcDate(row.registeredOn)}</time>
+                <time dateTime={row.lastEventAtUtc}>{formatUtcDateTime(row.lastEventAtUtc)}</time>
               </td>
             </tr>
           ))}
