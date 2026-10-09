@@ -6,6 +6,7 @@
     <Project Path="src/EvidenceChain.Infrastructure/EvidenceChain.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/EvidenceChain.IntegrationTests/EvidenceChain.IntegrationTests.csproj" />
     <Project Path="tests/EvidenceChain.UnitTests/EvidenceChain.UnitTests.csproj" />
   </Folder>
   <Folder Name="/tools/">

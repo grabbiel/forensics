@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Testcontainers.MsSql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\EvidenceChain.Api\EvidenceChain.Api.csproj" />
+    <ProjectReference Include="..\..\src\EvidenceChain.Infrastructure\EvidenceChain.Infrastructure.csproj" />
+    <!-- Aliased: the Seeder's top-level Program would clash with the API's. -->
+    <ProjectReference Include="..\..\tools\EvidenceChain.Seeder\EvidenceChain.Seeder.csproj" Aliases="seeder" />
+  </ItemGroup>
+
+</Project>
