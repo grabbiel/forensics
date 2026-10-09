@@ -9,6 +9,9 @@ public sealed record DatasetProfile(string Name, int Evidences, int TotalEvents,
     /// <summary>Load-testing dataset: 20,000 evidences and 200,000 events, same rules and fixtures.</summary>
     public static DatasetProfile Scale { get; } = new("scale", 20_000, 200_000, 90, 10);
 
+    /// <summary>Name and every size, e.g. "reference:1000/10000/10/90"; seed runs compare on it.</summary>
+    public string Spec => FormattableString.Invariant($"{Name}:{Evidences}/{TotalEvents}/{MaxTransfersPerEvidence}/{Days}");
+
     /// <summary>Named profiles, for the command line.</summary>
     public static IReadOnlyList<DatasetProfile> Named { get; } = [Reference, Scale];
 
