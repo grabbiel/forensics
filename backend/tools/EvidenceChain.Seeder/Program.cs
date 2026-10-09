@@ -58,9 +58,9 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
 
         case "generate":
         {
-            CommandLine.Allow(options, "seed", "anchor", "out", "clean");
-            var (seed, anchor) = DatasetFiles.ReadInputs(options);
-            var dataset = DatasetBuilder.Build(seed, anchor);
+            CommandLine.Allow(options, "seed", "anchor", "profile", "evidences", "events", "max-transfers", "days", "out", "clean");
+            var (seed, anchor, profile) = DatasetFiles.ReadInputs(options);
+            var dataset = DatasetBuilder.Build(seed, anchor, profile);
             var directory = options.GetValueOrDefault("out") ?? Path.Combine("database", "synthetic", "out");
             await DatasetFiles.ExportAsync(dataset, directory, clean: options.ContainsKey("clean"), cancellationToken);
             DatasetFiles.PrintSummary(dataset);
@@ -89,7 +89,8 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
                   prepare   --connection <cs> [--app-login <name> --app-password <pwd>]   enable RCSI; create the local app login
                   tracer    --connection <cs>                                             insert five tracer rows if empty
                   generate  [--seed 42] [--anchor 2026-10-01T00:00:00Z] [--out <dir>] [--clean]
-                                                                                          write 1,000 files and manifest.csv
+                            [--profile reference|scale] [--evidences N] [--events N] [--max-transfers N] [--days N]
+                                                                                          write the files and manifest.csv
                   reference [--dir database/synthetic]                                    refresh the committed reference files
                   seed                                                                    arrives with the schema (§2.4)
                 """);
