@@ -761,7 +761,6 @@ svg {
 
 .timeline__list {
   display: grid;
-  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -772,6 +771,24 @@ svg {
   grid-template-columns: 40px 1fr auto;
   gap: 12px;
   align-items: baseline;
+  padding: 10px 8px;
+  border-top: 1px solid var(--line-soft);
+  border-radius: var(--radius-control);
+  scroll-margin-top: 8rem;
+}
+
+.timeline__item:first-child {
+  border-top: 0;
+}
+
+/* The first event the verification refused: a frame and words, not colour alone. */
+.timeline__item--invalid {
+  background: color-mix(in srgb, var(--danger) 9%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.timeline__item:target {
+  outline: 2px solid var(--focus);
 }
 
 .timeline__seq {
@@ -779,10 +796,53 @@ svg {
   font-family: var(--mono);
 }
 
+.timeline__body p {
+  margin: 0;
+}
+
+.timeline__what {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.timeline__flag {
+  color: var(--danger);
+}
+
+.timeline__ok {
+  display: inline-flex;
+  color: var(--success);
+}
+
+.timeline__notes {
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.timeline__mac {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.timeline__mac code,
+.hash,
+.reason {
+  font-family: var(--mono);
+  letter-spacing: 0;
+}
+
+.hash {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
 .timeline__item time {
   color: var(--text-2);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* ---- Integrity badge ---- */
@@ -871,6 +931,127 @@ svg {
   gap: 8px;
   padding: 12px 20px 16px;
   border-top: 1px solid var(--line-soft);
+}
+
+/* ---- Verification ---- */
+
+.verify {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 0 20px 16px;
+}
+
+.verify__outcome:empty {
+  display: none;
+}
+
+.verify__valid,
+.verify__invalid,
+.verify__error {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.verify__valid {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.verify__invalid,
+.verify__error {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.verify__invalid svg,
+.verify__valid svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+/* ---- Anomalies and the pending transfer ---- */
+
+.anomalies {
+  padding: 0 20px 16px;
+}
+
+.anomalies__list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.anomaly {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--warning);
+}
+
+.anomaly--high {
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.anomaly > svg {
+  flex: none;
+  color: var(--warning);
+}
+
+.anomaly--high > svg {
+  color: var(--danger);
+}
+
+.anomaly p {
+  margin: 0;
+}
+
+.anomaly__title {
+  font-weight: 700;
+}
+
+.anomaly__severity {
+  margin-left: 6px;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.anomaly__text {
+  color: var(--text-2);
+}
+
+.pending {
+  display: flex;
+  gap: 10px;
+  margin: 16px 20px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-surface);
+}
+
+.pending > svg {
+  flex: none;
+  color: var(--warning);
+}
+
+.pending p {
+  margin: 0;
+}
+
+.pending__reason {
+  color: var(--text-2);
+}
+
+.facts__wide {
+  grid-column: 1 / -1;
 }
 
 /* ---- Skeleton (first load) ---- */
@@ -1014,8 +1195,26 @@ svg {
     justify-self: end;
   }
 
-  .filters {
+  .filters,
+  .verify,
+  .anomalies {
     padding-inline: 16px;
+  }
+
+  .pending {
+    margin-inline: 16px;
+  }
+
+  .timeline {
+    padding-inline: 16px;
+  }
+
+  .timeline__item {
+    grid-template-columns: 32px 1fr;
+  }
+
+  .timeline__item time {
+    grid-column: 2;
   }
 
   .table__num {

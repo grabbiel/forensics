@@ -1,12 +1,19 @@
-import { ArrowLeft } from '@phosphor-icons/react'
-import { Link, useLoaderData } from 'react-router'
+import { ArrowLeft, ArrowsLeftRight, CheckCircle, Hourglass, ShieldCheck, Warning, WarningOctagon } from '@phosphor-icons/react'
+import { Link, useFetcher, useLoaderData } from 'react-router'
+import type { Anomaly, ChainEvent, EvidenceDetail, TransferView, VerificationReport } from '../../api/evidence'
+import { IntegrityBadge } from '../../components/IntegrityBadge'
 import { TypeBadge } from '../../components/TypeBadge'
-import { describeEvent, formatUtcDateTime } from '../../lib/format'
-import type { evidenceLoader } from './evidenceLoader'
+import { ANOMALY_LABELS, describeEvent, formatBytes, formatUtcDateTime, SEVERITY_LABELS } from '../../lib/format'
+import type { evidenceLoader, VerifyResult } from './evidenceLoader'
 
-/** One evidence: what it is, who holds it and its custody timeline. */
+/** One evidence: what it is, who holds it, what is wrong with it, and its custody chain, verifiable on demand. */
 export function EvidencePage() {
   const { detail, chain } = useLoaderData<typeof evidenceLoader>()
+  const verify = useFetcher<VerifyResult>()
+  const verifying = verify.state !== 'idle'
+  const report = verify.data?.ok ? verify.data.report : undefined
+  // A verification just run speaks for the chain until the next load records it.
+  const status = report ? (report.valid ? 'Valid' : 'Invalid') : detail.integrity.status
 
   return (
     <article className="panel" aria-labelledby="evidence-title">
@@ -19,40 +26,184 @@ export function EvidencePage() {
           {detail.code}
         </h1>
         <TypeBadge type={detail.typeCode} />
+        <IntegrityBadge status={status} />
       </div>
       <p className="evidence__description">{detail.description}</p>
 
-      <dl className="facts">
-        <div>
-          <dt>Custodio actual</dt>
-          <dd>{detail.currentCustodian.displayName}</dd>
-        </div>
-        <div>
-          <dt>Registrada</dt>
-          <dd>
-            {formatUtcDateTime(detail.registeredAtUtc)} por {detail.registeredBy.displayName}
-          </dd>
-        </div>
-        <div>
-          <dt>Eventos</dt>
-          <dd>{detail.eventCount}</dd>
-        </div>
-      </dl>
+      <div className="verify">
+        {/* aria-disabled, not disabled, so focus stays on the button while it runs. */}
+        <button
+          type="button"
+          className="button button--ghost"
+          aria-disabled={verifying}
+          onClick={() => verifying || verify.load(`/evidence/${encodeURIComponent(detail.code)}/verify`)}
+        >
+          <ShieldCheck size={18} aria-hidden="true" />
+          {verifying ? 'Verificando…' : 'Verificar cadena'}
+        </button>
+        <VerifyOutcome result={verify.data} verifying={verifying} />
+      </div>
 
-      <section className="timeline" aria-labelledby="timeline-title">
-        <h2 id="timeline-title" className="section-title">
-          Cadena de custodia
+      {detail.anomalies.length > 0 && <Anomalies anomalies={detail.anomalies} />}
+      <Facts detail={detail} />
+      {detail.pendingTransfer && <PendingTransfer transfer={detail.pendingTransfer} />}
+      <Timeline events={chain.events} report={report} />
+    </article>
+  )
+}
+
+/** What the verification found, announced politely; the first invalid event links to its place in the timeline. */
+function VerifyOutcome({ result, verifying }: { result: VerifyResult | undefined; verifying: boolean }) {
+  return (
+    <div className="verify__outcome" role="status">
+      {verifying ? (
+        'Verificando la cadena…'
+      ) : !result ? null : !result.ok ? (
+        <span className="verify__error">
+          {result.status === 0 ? 'Sin conexión: no se pudo verificar. Inténtalo de nuevo.' : `No se pudo verificar (código ${result.status}).`}
+        </span>
+      ) : result.report.valid ? (
+        <span className="verify__valid">
+          <CheckCircle size={18} weight="bold" aria-hidden="true" />
+          Cadena íntegra: los {result.report.eventCount} eventos y el contenido coinciden con lo firmado.
+        </span>
+      ) : (
+        <InvalidOutcome report={result.report} />
+      )}
+    </div>
+  )
+}
+
+function InvalidOutcome({ report }: { report: VerificationReport }) {
+  const invalid = report.firstInvalid!
+  return (
+    <span className="verify__invalid">
+      <WarningOctagon size={18} weight="bold" aria-hidden="true" />
+      <span>
+        Cadena alterada en el <a href={`#event-${invalid.seq}`}>evento #{invalid.seq}</a>: {invalid.detail}{' '}
+        <code className="reason">{invalid.reason}</code>
+      </span>
+    </span>
+  )
+}
+
+/** Overdue-rule findings: icon, severity in words and the rule's own explanation. */
+function Anomalies({ anomalies }: { anomalies: Anomaly[] }) {
+  return (
+    <section className="anomalies" aria-labelledby="anomalies-title">
+      <h2 id="anomalies-title" className="section-title">
+        Anomalías
+      </h2>
+      <ul className="anomalies__list">
+        {anomalies.map((anomaly) => (
+          <li key={`${anomaly.transferId}-${anomaly.kind}`} className={`anomaly anomaly--${anomaly.severity.toLowerCase()}`}>
+            <Warning size={20} weight="bold" aria-hidden="true" />
+            <div>
+              <p className="anomaly__title">
+                {ANOMALY_LABELS[anomaly.kind]} <span className="anomaly__severity">{SEVERITY_LABELS[anomaly.severity]}</span>
+              </p>
+              <p className="anomaly__text">{anomaly.explanation}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function Facts({ detail }: { detail: EvidenceDetail }) {
+  return (
+    <dl className="facts">
+      <div>
+        <dt>Custodio actual</dt>
+        <dd>{detail.currentCustodian.displayName}</dd>
+      </div>
+      <div>
+        <dt>Custodio inicial</dt>
+        <dd>{detail.initialCustodian.displayName}</dd>
+      </div>
+      <div>
+        <dt>Registrada</dt>
+        <dd>
+          {formatUtcDateTime(detail.registeredAtUtc)} por {detail.registeredBy.displayName}
+        </dd>
+      </div>
+      <div>
+        <dt>Capturada</dt>
+        <dd>{formatUtcDateTime(detail.capturedAtUtc)}</dd>
+      </div>
+      <div>
+        <dt>Contenido</dt>
+        <dd>
+          {detail.content.mediaType} · {formatBytes(detail.content.byteLength)}
+        </dd>
+      </div>
+      <div className="facts__wide">
+        <dt>SHA-256 del contenido</dt>
+        <dd>
+          <code className="hash">{detail.content.sha256}</code>
+        </dd>
+      </div>
+    </dl>
+  )
+}
+
+/** The transfer waiting on its recipient. */
+function PendingTransfer({ transfer }: { transfer: TransferView }) {
+  return (
+    <section className="pending" aria-labelledby="pending-title">
+      <Hourglass size={20} aria-hidden="true" />
+      <div>
+        <h2 id="pending-title" className="section-title">
+          Transferencia pendiente
         </h2>
-        <ol className="timeline__list">
-          {chain.events.map((event) => (
-            <li key={event.eventId} className="timeline__item">
+        <p>
+          De {transfer.from.displayName} a <strong>{transfer.to.displayName}</strong>, pedida por {transfer.requestedBy.displayName} el{' '}
+          {formatUtcDateTime(transfer.requestedAtUtc)}.
+        </p>
+        <p className="pending__reason">Motivo: {transfer.reason}</p>
+      </div>
+    </section>
+  )
+}
+
+/** The chain in order. After a verification, events up to the last good one are ticked and the first bad one is marked. */
+function Timeline({ events, report }: { events: ChainEvent[]; report: VerificationReport | undefined }) {
+  const invalidSeq = report?.firstInvalid?.seq
+  return (
+    <section className="timeline" aria-labelledby="timeline-title">
+      <h2 id="timeline-title" className="section-title">
+        Cadena de custodia
+      </h2>
+      <ol className="timeline__list">
+        {events.map((event) => {
+          const invalid = event.seq === invalidSeq
+          const verified = report !== undefined && event.seq <= report.verifiedThroughSeq
+          return (
+            <li key={event.eventId} id={`event-${event.seq}`} className={`timeline__item${invalid ? ' timeline__item--invalid' : ''}`}>
               <span className="timeline__seq">#{event.seq}</span>
-              <span>{describeEvent(event)}</span>
+              <div className="timeline__body">
+                <p className="timeline__what">
+                  {event.kind === 'EvidenceRegistered' ? null : <ArrowsLeftRight size={14} aria-hidden="true" />}
+                  {describeEvent(event)}
+                  {invalid && <strong className="timeline__flag"> · Primer evento inválido</strong>}
+                  {verified && (
+                    <span className="timeline__ok">
+                      <CheckCircle size={14} weight="bold" aria-hidden="true" />
+                      <span className="visually-hidden"> (verificado)</span>
+                    </span>
+                  )}
+                </p>
+                {event.notes && <p className="timeline__notes">{event.notes}</p>}
+                <p className="timeline__mac">
+                  MAC <code title={event.mac}>{event.mac.slice(0, 16)}…</code> · clave {event.keyId}
+                </p>
+              </div>
               <time dateTime={event.occurredAtUtc}>{formatUtcDateTime(event.occurredAtUtc)}</time>
             </li>
-          ))}
-        </ol>
-      </section>
-    </article>
+          )
+        })}
+      </ol>
+    </section>
   )
 }
