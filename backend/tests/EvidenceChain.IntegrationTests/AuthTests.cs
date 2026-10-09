@@ -156,8 +156,4 @@ public sealed class AuthTests(ApiFactory factory)
         return await response.Content.ReadFromJsonAsync<JsonElement>(Token);
     }
 
-    private sealed class FixedClock(DateTime nowUtc) : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() => new(nowUtc, TimeSpan.Zero);
-    }
 }
