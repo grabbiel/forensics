@@ -1,13 +1,19 @@
+using System.Collections.Concurrent;
 using EvidenceChain.SyntheticData;
 
 namespace EvidenceChain.UnitTests.SyntheticData;
 
-/// <summary>The reference dataset, built once and shared by every synthetic-data test.</summary>
+/// <summary>Datasets for seed 42 and the reference anchor, built once per profile and shared by every test.</summary>
 internal static class Reference
 {
-    private static readonly Lazy<SyntheticDataset> Lazy = new(() => DatasetBuilder.Build(ReferenceDataset.Seed, ReferenceDataset.AnchorUtc));
+    private static readonly ConcurrentDictionary<string, Lazy<SyntheticDataset>> Built = new();
 
-    public static SyntheticDataset Dataset => Lazy.Value;
+    public static SyntheticDataset Dataset => For(DatasetProfile.Reference.Name);
+
+    /// <summary>The dataset for a named profile ("reference" or "scale").</summary>
+    public static SyntheticDataset For(string profile) =>
+        Built.GetOrAdd(profile, name => new Lazy<SyntheticDataset>(() =>
+            DatasetBuilder.Build(ReferenceDataset.Seed, ReferenceDataset.AnchorUtc, DatasetProfile.Named.Single(p => p.Name == name)))).Value;
 
     public static DateTime Anchor => ReferenceDataset.AnchorUtc;
 

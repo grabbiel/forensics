@@ -11,22 +11,23 @@ namespace EvidenceChain.UnitTests.SyntheticData;
 public sealed partial class EvidenceFilesTests
 {
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
-    private static IReadOnlyList<SyntheticEvidence> Evidences => Reference.Dataset.Evidences;
-    private static IEnumerable<SyntheticEvidence> OfType(string type) => Evidences.Where(e => e.TypeCode == type);
+    private static IEnumerable<SyntheticEvidence> OfType(SyntheticDataset data, string type) => data.Evidences.Where(e => e.TypeCode == type);
 
-    [Fact]
-    public void Has_400_logs_300_csvs_and_300_emails()
+    [Theory, InlineData("reference"), InlineData("scale")]
+    public void Splits_evidences_40_30_30_by_type(string profile)
     {
-        Assert.Equal(1000, Evidences.Count);
-        Assert.Equal(400, OfType(EvidenceTypes.Log).Count());
-        Assert.Equal(300, OfType(EvidenceTypes.Csv).Count());
-        Assert.Equal(300, OfType(EvidenceTypes.Eml).Count());
+        var data = Reference.For(profile);
+        Assert.Equal(data.Profile.Evidences, data.Evidences.Count);
+        Assert.All(data.Profile.TypeSplit, t => Assert.Equal(t.Count, OfType(data, t.Type).Count()));
+        if (profile == "reference")
+            Assert.Equal([400, 300, 300], data.Profile.TypeSplit.Select(t => t.Count));
     }
 
-    [Fact]
-    public void Names_and_codes_are_type_plus_utc_registration_date_plus_daily_index()
+    [Theory, InlineData("reference"), InlineData("scale")]
+    public void Names_and_codes_are_type_plus_utc_registration_date_plus_daily_index(string profile)
     {
-        Assert.All(Evidences, e =>
+        var data = Reference.For(profile);
+        Assert.All(data.Evidences, e =>
         {
             Assert.Matches(FileName(), e.FileName);
             Assert.Equal($"{e.Code}.{EvidenceTypes.FileExtension(e.TypeCode)}", e.FileName);
@@ -34,47 +35,52 @@ public sealed partial class EvidenceFilesTests
             Assert.Equal(DateOnly.FromDateTime(e.RegisteredAtUtc), e.CodeDateUtc);
             Assert.True(EvidenceCode.IsValid(e.Code));
         });
-        Assert.Equal(Evidences.Count, Evidences.Select(e => e.Code).Distinct().Count());
+        Assert.Equal(data.Evidences.Count, data.Evidences.Select(e => e.Code).Distinct().Count());
     }
 
-    [Fact]
-    public void Daily_indexes_count_from_one_in_registration_order_per_type_and_day()
+    [Theory, InlineData("reference"), InlineData("scale")]
+    public void Daily_indexes_count_from_one_in_registration_order_per_type_and_day(string profile)
     {
-        foreach (var day in Evidences.GroupBy(e => (e.TypeCode, e.CodeDateUtc)))
+        var data = Reference.For(profile);
+        foreach (var day in data.Evidences.GroupBy(e => (e.TypeCode, e.CodeDateUtc)))
         {
             var inOrder = day.OrderBy(e => e.RegisteredAtUtc).ThenBy(e => e.Code, StringComparer.Ordinal).Select(e => e.DailyNo);
             Assert.Equal(Enumerable.Range(1, day.Count()), inOrder);
         }
     }
 
-    [Fact]
-    public void Registrations_cover_the_90_days_before_the_anchor_with_one_busy_day()
+    [Theory, InlineData("reference"), InlineData("scale")]
+    public void Registrations_cover_the_90_days_before_the_anchor_with_one_busy_day(string profile)
     {
-        Assert.All(Evidences, e => Assert.InRange(e.RegisteredAtUtc, Reference.Anchor.AddDays(-90), Reference.Anchor.AddTicks(-1)));
-        Assert.True(Evidences.GroupBy(e => (e.TypeCode, e.CodeDateUtc)).Max(g => g.Count()) >= 40, "No day has 40 or more of one type.");
+        var data = Reference.For(profile);
+        Assert.All(data.Evidences, e => Assert.InRange(e.RegisteredAtUtc, data.AnchorUtc.AddDays(-90), data.AnchorUtc.AddTicks(-1)));
+        Assert.True(data.Evidences.GroupBy(e => (e.TypeCode, e.CodeDateUtc)).Max(g => g.Count()) >= 40, "No day has 40 or more of one type.");
     }
 
-    [Fact]
-    public void Capture_precedes_registration_by_at_most_72_hours()
+    [Theory, InlineData("reference"), InlineData("scale")]
+    public void Capture_precedes_registration_by_at_most_72_hours(string profile)
     {
-        Assert.All(Evidences, e => Assert.InRange(e.RegisteredAtUtc - e.CapturedAtUtc, TimeSpan.Zero, TimeSpan.FromHours(72)));
+        var data = Reference.For(profile);
+        Assert.All(data.Evidences, e => Assert.InRange(e.RegisteredAtUtc - e.CapturedAtUtc, TimeSpan.Zero, TimeSpan.FromHours(72)));
     }
 
-    [Fact]
-    public void Sizes_stay_within_each_type_range()
+    [Theory, InlineData("reference"), InlineData("scale")]
+    public void Sizes_stay_within_each_type_range(string profile)
     {
-        Assert.All(OfType(EvidenceTypes.Log), e => Assert.InRange(e.Content.Length, 1024, 5120));
-        Assert.All(OfType(EvidenceTypes.Csv), e => Assert.InRange(e.Content.Length, 1024, 5120));
-        Assert.All(OfType(EvidenceTypes.Eml), e => Assert.InRange(e.Content.Length, 2048, 10240));
+        var data = Reference.For(profile);
+        Assert.All(OfType(data, EvidenceTypes.Log), e => Assert.InRange(e.Content.Length, 1024, 5120));
+        Assert.All(OfType(data, EvidenceTypes.Csv), e => Assert.InRange(e.Content.Length, 1024, 5120));
+        Assert.All(OfType(data, EvidenceTypes.Eml), e => Assert.InRange(e.Content.Length, 2048, 10240));
 
-        var large = Evidences.Single(e => e.Code == Reference.Dataset.Fixtures.LargeEmail);
+        var large = data.Evidences.Single(e => e.Code == data.Fixtures.LargeEmail);
         Assert.InRange(large.Content.Length, 10_000, 10_240);
     }
 
-    [Fact]
-    public void Files_are_utf8_without_bom_and_use_their_type_line_ending()
+    [Theory, InlineData("reference"), InlineData("scale")]
+    public void Files_are_utf8_without_bom_and_use_their_type_line_ending(string profile)
     {
-        Assert.All(Evidences, e =>
+        var data = Reference.For(profile);
+        Assert.All(data.Evidences, e =>
         {
             Assert.False(e.Content.AsSpan().StartsWith((byte[])[0xEF, 0xBB, 0xBF]), $"{e.FileName} starts with a BOM.");
             StrictUtf8.GetString(e.Content); // throws on invalid UTF-8
@@ -88,20 +94,22 @@ public sealed partial class EvidenceFilesTests
         });
     }
 
-    [Fact]
-    public void Hashes_and_media_types_match_the_content()
+    [Theory, InlineData("reference"), InlineData("scale")]
+    public void Hashes_and_media_types_match_the_content(string profile)
     {
-        Assert.All(Evidences, e =>
+        var data = Reference.For(profile);
+        Assert.All(data.Evidences, e =>
         {
             Assert.Equal(SHA256.HashData(e.Content), e.Sha256);
             Assert.Equal(DatasetBuilder.MediaType(e.TypeCode), e.MediaType);
         });
     }
 
-    [Fact]
-    public void Logs_are_rfc5424_lines_with_ascending_timestamps_and_documentation_addresses()
+    [Theory, InlineData("reference"), InlineData("scale")]
+    public void Logs_are_rfc5424_lines_with_ascending_timestamps_and_documentation_addresses(string profile)
     {
-        foreach (var log in OfType(EvidenceTypes.Log))
+        var data = Reference.For(profile);
+        foreach (var log in OfType(data, EvidenceTypes.Log))
         {
             var previous = DateTime.MinValue;
             foreach (var line in Lines(log, "\n"))
@@ -118,21 +126,24 @@ public sealed partial class EvidenceFilesTests
         }
     }
 
-    [Fact]
-    public void About_one_log_in_ten_holds_a_deny_burst_from_one_source()
+    [Theory, InlineData("reference"), InlineData("scale")]
+    public void About_one_log_in_ten_holds_a_deny_burst_from_one_source(string profile)
     {
-        var withBurst = OfType(EvidenceTypes.Log).Count(log =>
+        var data = Reference.For(profile);
+        var withBurst = OfType(data, EvidenceTypes.Log).Count(log =>
         {
             var sources = Lines(log, "\n").Select(l => DenySource().Match(l)).Select(m => m.Success ? m.Groups[1].Value : null).ToArray();
             return Enumerable.Range(0, Math.Max(0, sources.Length - 4)).Any(i => sources[i] is not null && sources.Skip(i).Take(5).All(s => s == sources[i]));
         });
-        Assert.InRange(withBurst, 20, 60); // 5-15% of 400
+        var logs = OfType(data, EvidenceTypes.Log).Count();
+        Assert.InRange(withBurst, logs * 5 / 100, logs * 15 / 100); // about one in ten
     }
 
-    [Fact]
-    public void Csvs_follow_rfc4180_with_dot_decimals_and_test_currency()
+    [Theory, InlineData("reference"), InlineData("scale")]
+    public void Csvs_follow_rfc4180_with_dot_decimals_and_test_currency(string profile)
     {
-        foreach (var csv in OfType(EvidenceTypes.Csv))
+        var data = Reference.For(profile);
+        foreach (var csv in OfType(data, EvidenceTypes.Csv))
         {
             var rows = Lines(csv, "\r\n").ToArray();
             Assert.Equal("TransactionId,BookingDate,ValueDate,Account,Counterparty,Description,Amount,Currency,Balance", rows[0]);
@@ -152,10 +163,11 @@ public sealed partial class EvidenceFilesTests
         }
     }
 
-    [Fact]
-    public void Emails_have_ascii_headers_one_folded_header_and_a_date_whose_weekday_matches()
+    [Theory, InlineData("reference"), InlineData("scale")]
+    public void Emails_have_ascii_headers_one_folded_header_and_a_date_whose_weekday_matches(string profile)
     {
-        foreach (var eml in OfType(EvidenceTypes.Eml))
+        var data = Reference.For(profile);
+        foreach (var eml in OfType(data, EvidenceTypes.Eml))
         {
             var text = StrictUtf8.GetString(eml.Content);
             var headerEnd = text.IndexOf("\r\n\r\n", StringComparison.Ordinal);
