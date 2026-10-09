@@ -1,12 +1,14 @@
 using System.ComponentModel.DataAnnotations;
 using EvidenceChain.Application.Inbox;
 using EvidenceChain.Domain.Catalog;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EvidenceChain.Api.Controllers;
 
 /// <summary>Evidence inbox. Tracer endpoint: newest first, no paging yet (keyset arrives on Day 3).</summary>
 [ApiController]
+[Authorize]
 [Route("api/v1/evidence")]
 public sealed class EvidenceController(IEvidenceInboxQuery inbox) : ControllerBase
 {
