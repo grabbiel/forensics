@@ -15,7 +15,6 @@ public sealed class AuthController(IUserDirectory users, TokenIssuer tokens) : C
     /// <remarks>Demo sign-in, no password. The role comes from the seeded user, never from the request.</remarks>
     // No param tags: the XML-comment generator would describe the body with the cancellation token's text.
     [HttpPost("token")]
-    [Consumes("application/json")]
     [ProducesResponseType<TokenResponse>(StatusCodes.Status200OK, "application/json")]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest, "application/problem+json")]
     public async Task<ActionResult<TokenResponse>> Token(TokenRequest request, CancellationToken cancellationToken)

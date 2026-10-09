@@ -68,6 +68,9 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/TokenRequest'
+          text/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
           application/*+json:
             schema:
               $ref: '#/components/schemas/TokenRequest'

@@ -57,6 +57,17 @@ public sealed class AuthTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Sign_in_accepts_every_json_media_type_the_contract_lists()
+    {
+        foreach (var mediaType in new[] { "application/json", "text/json", "application/vnd.evidence+json" })
+        {
+            var content = new StringContent("{}", System.Text.Encoding.UTF8, mediaType);
+            var response = await factory.CreateClient().PostAsync("/api/v1/auth/token", content, Token);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode); // validated, so understood: not 415
+        }
+    }
+
+    [Fact]
     public async Task Without_a_valid_token_every_api_route_answers_401_problem()
     {
         var issuer = factory.Services.GetRequiredService<TokenIssuer>();
