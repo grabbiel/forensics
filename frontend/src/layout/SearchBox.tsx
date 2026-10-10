@@ -1,11 +1,22 @@
 import { MagnifyingGlass } from '@phosphor-icons/react'
-import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
-import { useLocation, useNavigate, useNavigation, type Path } from 'react-router'
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { NavigationType, useLocation, useNavigate, useNavigation, useNavigationType, type Location, type Path } from 'react-router'
+import { useRouterNow } from '../lib/useRouterNow'
 import { useUpdateSearch } from '../lib/useUpdateSearch'
 
 export const DEBOUNCE_MS = 300
 
 const INBOX = '/'
+
+/** History state on every navigation this box makes, so it can tell its own from a row, a link, or Back. */
+const SENT = { sentBySearchBox: true }
+
+/** Whether this box made the navigation to `location`. Back or Forward to an entry it once made is someone else's. */
+const sentByBox = (location: Location, action: NavigationType | undefined) =>
+  action !== NavigationType.Pop && location.state?.sentBySearchBox === true
+
+/** A visit to a page: its history key and its URL, since the browser keys a fresh load and every #fragment "default". */
+const visitOf = ({ key, pathname, search, hash }: Location) => `${key} ${pathname}${search}${hash}`
 
 /** The search the box shows at a location: the inbox's `q`, nothing on any other page. */
 const queryAt = ({ pathname, search }: Path) => (pathname === INBOX && new URLSearchParams(search).get('q')) || ''
@@ -21,46 +32,76 @@ const shownAt = (pathname: string, q: string) => `${pathname}?q=${q}`
  */
 export function SearchBox() {
   const location = useLocation()
+  const navigationType = useNavigationType()
+  const pending = useNavigation().location
   const onInbox = location.pathname === INBOX
   const urlQuery = queryAt(location)
   const shown = shownAt(location.pathname, urlQuery)
-  // Where the user is going counts before it loads: a row just clicked, or a search sent from another page.
-  const heading = useNavigation().location ?? location
-  const toInbox = heading.pathname === INBOX
-  const headingTo = shownAt(heading.pathname, queryAt(heading))
+  // A search of the inbox on its way, whoever started it, said from any other page; the inbox says so itself.
+  const searching = pending && !onInbox ? queryAt(pending) : ''
+  const routerNow = useRouterNow()
   const updateSearch = useUpdateSearch()
   const navigate = useNavigate()
   const [value, setValue] = useState(urlQuery)
   const timer = useRef<number>(undefined)
   const written = useRef(shown)
-  // Read when a write runs, which for a pause is after the user may have moved on. It is as of the last render, and
-  // React Router renders a navigation in a transition: one started a moment ago may not be here yet.
-  const route = useRef({ onInbox, toInbox, headingTo })
-
-  useLayoutEffect(() => {
-    route.current = { onInbox, toInbox, headingTo }
-  }, [onInbox, toInbox, headingTo])
+  // The visit the router was on when the box last navigated, until React next renders one.
+  const actedOn = useRef<string>(undefined)
+  // The visit React last rendered, which the box has adopted or kept.
+  const seen = useRef(visitOf(location))
 
   // Adopt URL changes this box didn't make (Back/Forward, "Quitar filtros", another page) and drop any pending write.
+  // The inbox's own filter changes keep the box's `q`, so a pending write builds on them. Back or Forward wins even
+  // when it shows the same `q`, so it also beats a search sent from another page.
   useEffect(() => {
-    if (shown === written.current) return
+    const visit = visitOf(location)
+    seen.current = visit
+    // React catching up with the page the router was on when the box last navigated: the box's navigation is newer.
+    const caughtUp = visit === actedOn.current
+    actedOn.current = undefined
+    if (caughtUp) return
+    if (shown === written.current && navigationType !== NavigationType.Pop) return
     written.current = shown
     window.clearTimeout(timer.current)
     setValue(urlQuery)
-  }, [shown, urlQuery])
+  }, [location, navigationType, shown, urlQuery])
 
   useEffect(() => () => window.clearTimeout(timer.current), [])
+
+  /**
+   * Whether a pause that ends now may search: on the inbox while the box is in step with it, or on the way to a search
+   * the box sent. A row, a link, Back or Forward the user chose wins, even one React has not rendered yet.
+   */
+  function mayRefine() {
+    const now = routerNow()
+    const pending = now.navigation.location
+    const heading = pending ?? now.location
+    const action = pending ? now.navigation.historyAction : now.historyAction
+    if (heading.pathname !== INBOX) return false
+    if (sentByBox(heading, action)) return true
+    // A Back or Forward on its way, or landed but not yet rendered, wins: the box adopts it once React shows it.
+    if (action === NavigationType.Pop && (pending || visitOf(now.location) !== seen.current)) return false
+    // In step with where the inbox is going: its own filter changes carry the box's `q`; a clear or a link drops it.
+    return shownAt(INBOX, queryAt(heading)) === written.current
+  }
 
   /** Cancels any pending write, then sets or clears the inbox's `q` unless this box last wrote or adopted the same. */
   function write(q: string, replace: boolean) {
     window.clearTimeout(timer.current)
-    const { onInbox, toInbox } = route.current
-    if (!q && !toInbox) return // nothing to look for, so no reason to leave the page
+    const now = routerNow()
+    const fromInbox = now.location.pathname === INBOX
+    const pending = now.navigation.location
+    const pendingAction = now.navigation.historyAction
+    // Builds on the inbox the user is on, or on the search this box sent and is still loading; from anything else (a
+    // row, a link, a Back to some filtered inbox from another page) it starts a new search.
+    const builds = pending ? pending.pathname === INBOX && (fromInbox || sentByBox(pending, pendingAction)) : fromInbox
+    if (!q && !builds) return // nothing to look for, so no reason to leave the page
     if (shownAt(INBOX, q) === written.current) return
     written.current = shownAt(INBOX, q)
-    if (!toInbox) {
-      // Heading anywhere but the inbox: a new search of the whole inbox, as a page Back leaves.
-      void navigate({ pathname: INBOX, search: `?${new URLSearchParams({ q })}` })
+    actedOn.current = visitOf(now.location)
+    if (!builds) {
+      // A new search of the whole inbox, as a page Back leaves.
+      void navigate({ pathname: INBOX, search: `?${new URLSearchParams({ q })}` }, { state: SENT })
       return
     }
     updateSearch(
@@ -69,8 +110,9 @@ export function SearchBox() {
         else params.delete('q')
         params.delete('cursor') // a new search starts on the first page
       },
-      // Still loading a search sent from another page: replacing would drop that page from history.
-      { replace: replace && onInbox, pathname: INBOX },
+      // A push still loading (a tab, Enter, a search sent from another page) keeps its new entry: replacing would
+      // overwrite the page before it instead.
+      { replace: replace && (!pending || pendingAction === NavigationType.Replace), pathname: INBOX, state: SENT },
     )
   }
 
@@ -79,9 +121,7 @@ export function SearchBox() {
     setValue(next)
     window.clearTimeout(timer.current)
     timer.current = window.setTimeout(() => {
-      // Only on the inbox, or on the way to a search this box sent; a link or Back there drops what was typed instead.
-      const { onInbox, toInbox, headingTo } = route.current
-      if (toInbox && (onInbox || headingTo === written.current)) write(next.trim(), true)
+      if (mayRefine()) write(next.trim(), true)
     }, DEBOUNCE_MS)
   }
 
@@ -110,6 +150,12 @@ export function SearchBox() {
       <button type="submit" className="search__submit" aria-label="Buscar">
         <MagnifyingGlass size={20} weight="bold" aria-hidden="true" />
       </button>
+      {/* There from the start on those pages, so the first message is read too. */}
+      {!onInbox && (
+        <span className="visually-hidden" role="status">
+          {searching && `Buscando «${searching}»…`}
+        </span>
+      )}
     </form>
   )
 }

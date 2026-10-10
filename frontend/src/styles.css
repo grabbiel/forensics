@@ -168,6 +168,33 @@ svg {
   gap: 24px;
 }
 
+/* Indeterminate bar over the header's bottom edge while a page loads; the header is sticky, so it shows however far
+   the page is scrolled. */
+.progress {
+  position: absolute;
+  inset: auto 0 -1px;
+  height: 2px;
+  overflow: hidden;
+}
+
+.progress::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  background: var(--accent);
+  animation: progress 1s ease-in-out infinite;
+}
+
+@keyframes progress {
+  from {
+    translate: -100% 0;
+  }
+  to {
+    translate: 300% 0;
+  }
+}
+
 .brand {
   justify-self: start;
   display: inline-flex;
@@ -376,33 +403,6 @@ svg {
 
 .subbar__sort:hover {
   color: var(--text);
-}
-
-/* Indeterminate bar along the box's top edge while a loader runs. */
-.progress {
-  position: absolute;
-  inset: 0 0 auto;
-  height: 2px;
-  overflow: hidden;
-  border-radius: var(--radius-surface) var(--radius-surface) 0 0;
-}
-
-.progress::before {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 35%;
-  background: var(--accent);
-  animation: progress 1s ease-in-out infinite;
-}
-
-@keyframes progress {
-  from {
-    translate: -100% 0;
-  }
-  to {
-    translate: 300% 0;
-  }
 }
 
 /* ---- Results ---- */
