@@ -6,7 +6,7 @@ import type { Person } from '../../api/people'
 import { IntegrityBadge } from '../../components/IntegrityBadge'
 import { TypeBadge } from '../../components/TypeBadge'
 import { describeEmpty, describeResults, evidenceCount, formatUtcDateTime, INTEGRITY_LABELS } from '../../lib/format'
-import { usePendingSearch, useUpdateSearch } from '../../lib/useUpdateSearch'
+import { CLEARS_FILTERS, usePendingSearch, useUpdateSearch } from '../../lib/useUpdateSearch'
 import { readFilter, type inboxLoader } from './inboxLoader'
 
 const TYPE_TABS: { type: EvidenceType | undefined; label: string }[] = [
@@ -56,11 +56,17 @@ export function InboxPage() {
     titleRef.current?.focus()
   }
 
-  /** Drops every filter but keeps the sort; focus moves to the heading because the button disappears. */
+  /**
+   * Drops every filter but keeps the sort, and says so in history so the search box drops a search typed and not yet
+   * sent; focus moves to the heading because the button disappears.
+   */
   function clearFilters() {
-    updateSearch((params) => {
-      for (const name of [...FILTER_PARAMS, 'cursor']) params.delete(name)
-    })
+    updateSearch(
+      (params) => {
+        for (const name of [...FILTER_PARAMS, 'cursor']) params.delete(name)
+      },
+      { state: CLEARS_FILTERS },
+    )
     titleRef.current?.focus()
   }
 

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, Outlet } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
 import { describe, expect, it } from 'vitest'
-import { usePendingSearch, useUpdateSearch } from './useUpdateSearch'
+import { CLEARS_FILTERS, usePendingSearch, useUpdateSearch } from './useUpdateSearch'
 
 /**
  * Tabs and the search they show, above a stand-in inbox and an evidence page whose loader waits until released; the
@@ -29,6 +29,9 @@ function renderEditor(initialEntries: string[], holdInbox = false) {
           }}
         >
           CSV válidas
+        </button>
+        <button type="button" onClick={() => updateSearch((params) => params.set('q', 'vpn'), { state: { own: true } })}>
+          Buscar vpn
         </button>
       </>
     )
@@ -57,7 +60,32 @@ function renderEditor(initialEntries: string[], holdInbox = false) {
 
 const url = ({ pathname, search }: { pathname: string; search: string }) => pathname + search
 
+const pendingState = (router: ReturnType<typeof renderEditor>['router']) => router.state.navigation.location?.state
+
 describe('useUpdateSearch', () => {
+  it('gives edits built on a clear still loading its mark, unless they bring their own state', async () => {
+    const { router, release } = renderEditor(['/?type=LOG'], true)
+
+    act(() => void router.navigate('/', { state: CLEARS_FILTERS })) // "Quitar filtros", still loading
+    await userEvent.click(screen.getByRole('button', { name: 'CSV válidas' }))
+    expect(router.state.navigation.location?.search).toBe('?type=CSV&status=Valid')
+    expect(pendingState(router)).toEqual(CLEARS_FILTERS)
+    await userEvent.click(screen.getByRole('button', { name: 'Buscar vpn' }))
+    expect(pendingState(router)).toEqual({ own: true })
+
+    await act(async () => release())
+  })
+
+  it('gives no mark to an edit built on a clear that has landed', async () => {
+    const { router } = renderEditor(['/?type=LOG'])
+
+    await act(() => router.navigate('/', { state: CLEARS_FILTERS }))
+    await userEvent.click(screen.getByRole('button', { name: 'CSV' }))
+
+    expect(url(router.state.location)).toBe('/?type=CSV')
+    expect(router.state.location.state).toBeNull()
+  })
+
   it('composes two edits made in the same moment, before React has rendered the first', async () => {
     const { router } = renderEditor(['/?q=fire'])
 
