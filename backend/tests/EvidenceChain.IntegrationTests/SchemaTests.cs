@@ -192,6 +192,28 @@ public sealed class SchemaTests(ApiFactory factory)
 
     private static byte[] Mac() => RandomNumberGenerator.GetBytes(32);
 
+    [Fact]
+    public async Task Inbox_keyset_indexes_include_every_column_a_page_reads_but_their_own_keys()
+    {
+        await using var db = await OpenAsync();
+        var included = await db.Database.SqlQuery<string>($"""
+            SELECT i.name + '|' + c.name AS Value
+            FROM sys.indexes i
+            JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id AND ic.is_included_column = 1
+            JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+            WHERE i.object_id = OBJECT_ID('dbo.EvidenceInbox')
+            """).ToListAsync(Token);
+
+        // What EvidenceInboxQuery selects besides the keyset (LastEventAtUtc, EvidenceId) every one of them ends with.
+        string[] page = ["Code", "TypeCode", "Description", "CurrentCustodianId", "CurrentCustodianName", "EventCount",
+            "IntegrityStatus", "IntegrityCheckedAtUtc", "PendingTransferId", "PendingToCustodianId", "PendingSinceUtc"];
+        (string Index, string? Key)[] keyset =
+            [("IX_EvidenceInbox_Recent", null), ("IX_EvidenceInbox_Type", "TypeCode"),
+             ("IX_EvidenceInbox_Custodian", "CurrentCustodianId"), ("IX_EvidenceInbox_Integrity", "IntegrityStatus")];
+        var expected = keyset.SelectMany(k => page.Where(c => c != k.Key).Select(c => $"{k.Index}|{c}"));
+        Assert.Equal(expected.Order(StringComparer.Ordinal), included.Order(StringComparer.Ordinal));
+    }
+
     private async Task<AppDbContext> OpenAsync()
     {
         Assert.SkipWhen(factory.SkipReason is not null, factory.SkipReason ?? "");

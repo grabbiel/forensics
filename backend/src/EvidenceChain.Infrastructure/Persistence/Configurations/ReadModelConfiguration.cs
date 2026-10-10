@@ -5,7 +5,11 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace EvidenceChain.Infrastructure.Persistence.Configurations;
 
-/// <summary>Maps the EvidenceInbox projection; every index ends in (LastEventAtUtc DESC, EvidenceId DESC) for keyset paging.</summary>
+/// <summary>
+/// Maps the EvidenceInbox projection. Every keyset index ends in (LastEventAtUtc DESC, EvidenceId DESC) and includes the
+/// rest of an inbox page's columns, so a page is read from the index alone, without a lookup per row. The cost is on
+/// writes: each moves its row in all four, now wider.
+/// </summary>
 internal sealed class EvidenceInboxConfiguration : IEntityTypeConfiguration<EvidenceInboxRow>
 {
     public void Configure(EntityTypeBuilder<EvidenceInboxRow> builder)
@@ -24,10 +28,19 @@ internal sealed class EvidenceInboxConfiguration : IEntityTypeConfiguration<Evid
         builder.HasOne<Evidence>().WithOne().HasForeignKey<EvidenceInboxRow>(r => r.EvidenceId).OnDelete(DeleteBehavior.Cascade);
 
         builder.HasIndex(r => r.Code).IsUnique().HasDatabaseName("UX_EvidenceInbox_Code");
-        builder.HasIndex(r => new { r.LastEventAtUtc, r.EvidenceId }).IsDescending(true, true).HasDatabaseName("IX_EvidenceInbox_Recent");
-        builder.HasIndex(r => new { r.TypeCode, r.LastEventAtUtc, r.EvidenceId }).IsDescending(false, true, true).HasDatabaseName("IX_EvidenceInbox_Type");
-        builder.HasIndex(r => new { r.CurrentCustodianId, r.LastEventAtUtc, r.EvidenceId }).IsDescending(false, true, true).HasDatabaseName("IX_EvidenceInbox_Custodian");
-        builder.HasIndex(r => new { r.IntegrityStatus, r.LastEventAtUtc, r.EvidenceId }).IsDescending(false, true, true).HasDatabaseName("IX_EvidenceInbox_Integrity");
+        // Each includes the page's columns but its own keys: SQL Server refuses a column that is both.
+        builder.HasIndex(r => new { r.LastEventAtUtc, r.EvidenceId }).IsDescending(true, true).HasDatabaseName("IX_EvidenceInbox_Recent")
+            .IncludeProperties(r => new { r.Code, r.TypeCode, r.Description, r.CurrentCustodianId, r.CurrentCustodianName, r.EventCount,
+                r.IntegrityStatus, r.IntegrityCheckedAtUtc, r.PendingTransferId, r.PendingToCustodianId, r.PendingSinceUtc });
+        builder.HasIndex(r => new { r.TypeCode, r.LastEventAtUtc, r.EvidenceId }).IsDescending(false, true, true).HasDatabaseName("IX_EvidenceInbox_Type")
+            .IncludeProperties(r => new { r.Code, r.Description, r.CurrentCustodianId, r.CurrentCustodianName, r.EventCount,
+                r.IntegrityStatus, r.IntegrityCheckedAtUtc, r.PendingTransferId, r.PendingToCustodianId, r.PendingSinceUtc });
+        builder.HasIndex(r => new { r.CurrentCustodianId, r.LastEventAtUtc, r.EvidenceId }).IsDescending(false, true, true).HasDatabaseName("IX_EvidenceInbox_Custodian")
+            .IncludeProperties(r => new { r.Code, r.TypeCode, r.Description, r.CurrentCustodianName, r.EventCount,
+                r.IntegrityStatus, r.IntegrityCheckedAtUtc, r.PendingTransferId, r.PendingToCustodianId, r.PendingSinceUtc });
+        builder.HasIndex(r => new { r.IntegrityStatus, r.LastEventAtUtc, r.EvidenceId }).IsDescending(false, true, true).HasDatabaseName("IX_EvidenceInbox_Integrity")
+            .IncludeProperties(r => new { r.Code, r.TypeCode, r.Description, r.CurrentCustodianId, r.CurrentCustodianName, r.EventCount,
+                r.IntegrityCheckedAtUtc, r.PendingTransferId, r.PendingToCustodianId, r.PendingSinceUtc });
         // The integrity sweep's "checked longest ago" order; never-checked (NULL) sorts first.
         builder.HasIndex(r => new { r.IntegrityCheckedAtUtc, r.EvidenceId }).HasDatabaseName("IX_EvidenceInbox_IntegrityChecked");
     }

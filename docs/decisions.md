@@ -15,7 +15,7 @@
 - **Choice.** Keyset pagination over `EvidenceInbox`, a projection updated in each write's transaction and ordered by `(LastEventAtUtc, EvidenceId)`.
   - The type, custodian and integrity filters each have an index ending in those columns.
   - The opaque cursor holds the last row's position and a hash of the filters and sort, so it cannot continue another listing (`400`).
-- **Discarded.** `OFFSET` with a total count: it reads every skipped row (653 reads for page 800, 88 by keyset), and rows shift as events arrive.
+- **Discarded.** `OFFSET` with a total count: it reads every skipped row (592 reads for page 800, 9 by keyset), and rows shift as events arrive.
 - **Cost.** No page numbers or totals; one index per filter; a projection update on every write. Text search and combined filters scan.
 - **Change signal.** Users need page numbers or totals; combined filters become common; text search dominates latency (move to full-text search); inbox p95 above 800 ms.
 
