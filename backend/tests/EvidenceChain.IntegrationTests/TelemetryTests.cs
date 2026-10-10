@@ -55,6 +55,21 @@ public sealed class TelemetryTests(ApiFactory factory)
         AssertRequestStatuses(azure);
     }
 
+    [Theory]
+    [InlineData("::ffff:198.51.100.7", "198.51.100.7")] // an IPv4 caller as Kestrel reports it on a dual-mode socket
+    [InlineData("2001:db8::7", "2001:db8::7")]
+    public void A_request_records_the_caller_as_resolved_after_forwarded_headers(string remote, string recorded)
+    {
+        var options = factory.Services.GetRequiredService<IOptionsMonitor<AspNetCoreTraceInstrumentationOptions>>().Get(Options.DefaultName);
+        using var activity = new Activity("request");
+        var context = new DefaultHttpContext();
+        context.Connection.RemoteIpAddress = System.Net.IPAddress.Parse(remote);
+
+        options.EnrichWithHttpResponse!(activity, context.Response);
+
+        Assert.Equal(recorded, activity.GetTagItem("client.address"));
+    }
+
     /// <summary>What the Azure Monitor exporter reads to decide success: a 4xx span set to Ok, the rest left alone.</summary>
     private static void AssertRequestStatuses(WebApplicationFactory<Program> host)
     {
