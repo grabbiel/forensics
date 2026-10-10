@@ -3,13 +3,14 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace EvidenceChain.Api.OpenApi;
 
 /// <summary>
 /// Declares the problem responses that cross-cutting rules can produce, read from the same attributes that
 /// enforce them, so the OpenAPI document cannot drift from the behaviour: 401 unless anonymous, 403 behind a
-/// policy or role, 400 for header validation and 428 for a missing If-Match.
+/// policy or role, 400 for header validation, 428 for a missing If-Match and 429 under a rate limit.
 /// </summary>
 internal sealed class ProblemResponsesConvention : IActionModelConvention
 {
@@ -29,6 +30,8 @@ internal sealed class ProblemResponsesConvention : IActionModelConvention
             Add(action, typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest);
         if (attributes.OfType<RequireIfMatchAttribute>().Any())
             Add(action, typeof(ProblemDetails), StatusCodes.Status428PreconditionRequired);
+        if (attributes.OfType<EnableRateLimitingAttribute>().Any())
+            Add(action, typeof(ProblemDetails), StatusCodes.Status429TooManyRequests);
     }
 
     /// <summary>Unless the action already declares that status itself.</summary>

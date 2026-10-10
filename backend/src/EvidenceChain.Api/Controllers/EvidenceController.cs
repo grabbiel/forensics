@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using EvidenceChain.Api.Inbox;
+using EvidenceChain.Api.RateLimiting;
 using EvidenceChain.Application.Inbox;
 using EvidenceChain.Application.Integrity;
 using EvidenceChain.Application.Review;
@@ -7,12 +8,14 @@ using EvidenceChain.Domain.Catalog;
 using EvidenceChain.Domain.Custody;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace EvidenceChain.Api.Controllers;
 
 /// <summary>Journey 1: find evidence, read its custody and verify its chain. The evidence code is its public id.</summary>
 [ApiController]
 [Authorize]
+[EnableRateLimiting(RateLimitPolicies.Reads)]
 [Route("api/v1/evidence")]
 public sealed class EvidenceController(IEvidenceInboxQuery inbox, IEvidenceQueries evidence, ChainVerificationService verification) : ControllerBase
 {
@@ -29,6 +32,7 @@ public sealed class EvidenceController(IEvidenceInboxQuery inbox, IEvidenceQueri
     /// <param name="limit">Rows per page, 1 to 50.</param>
     /// <param name="cancellationToken">Aborted when the client cancels.</param>
     [HttpGet]
+    [EnableRateLimiting(RateLimitPolicies.Inbox)]
     [ProducesResponseType<InboxPageResponse>(StatusCodes.Status200OK, "application/json")]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest, "application/problem+json")]
     public async Task<ActionResult<InboxPageResponse>> List(
@@ -87,6 +91,7 @@ public sealed class EvidenceController(IEvidenceInboxQuery inbox, IEvidenceQueri
     /// <param name="id">The evidence code, e.g. LOG202609110007.</param>
     /// <param name="cancellationToken">Aborted when the client cancels.</param>
     [HttpGet("{id}/chain/verify")]
+    [EnableRateLimiting(RateLimitPolicies.Verify)]
     [ProducesResponseType<VerificationReport>(StatusCodes.Status200OK, "application/json")]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound, "application/problem+json")]
     public async Task<ActionResult<VerificationReport>> Verify(string id, CancellationToken cancellationToken) =>

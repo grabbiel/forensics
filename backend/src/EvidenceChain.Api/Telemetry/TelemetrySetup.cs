@@ -14,7 +14,8 @@ public static class TelemetrySetup
     public static IServiceCollection AddEvidenceChainTelemetry(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<EvidenceChainMetrics>();
-        var telemetry = services.AddOpenTelemetry().WithMetrics(metrics => metrics.AddMeter(EvidenceChainMetrics.MeterName));
+        // ASP.NET Core's rate-limiting meter counts every request by policy and result (acquired or rejected).
+        var telemetry = services.AddOpenTelemetry().WithMetrics(metrics => metrics.AddMeter(EvidenceChainMetrics.MeterName, "Microsoft.AspNetCore.RateLimiting"));
         if (!string.IsNullOrWhiteSpace(configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
             telemetry.UseAzureMonitor();
 

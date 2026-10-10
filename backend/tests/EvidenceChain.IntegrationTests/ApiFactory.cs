@@ -1,6 +1,7 @@
 extern alias seeder;
 
 using DotNet.Testcontainers.Builders;
+using EvidenceChain.Api.RateLimiting;
 using EvidenceChain.Application.Anomalies;
 using EvidenceChain.Domain.Anomalies;
 using EvidenceChain.Domain.Catalog;
@@ -156,12 +157,25 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         SqlConnection.ClearAllPools();
     }
 
-    /// <summary>Points the API at the container (or at an unused address when Docker is missing); no background sweeps.</summary>
+    /// <summary>
+    /// Points the API at the container (or at an unused address when Docker is missing); no background sweeps; rate
+    /// limits raised out of reach (RateLimitingTests set their own).
+    /// </summary>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("ConnectionStrings:Default",
             ConnectionString ?? "Server=127.0.0.1,1;Database=Unused;User Id=x;Password=x;Encrypt=False;Connect Timeout=1");
         builder.UseSetting("Integrity:Sweep:Enabled", "false");
+        builder.ConfigureTestServices(services => services.PostConfigure<RateLimitingOptions>(RaiseOutOfReach));
+    }
+
+    /// <summary>Every limit ×1000: the limiter stays in the path of every test, yet even the 128-write burst never meets it.</summary>
+    private static void RaiseOutOfReach(RateLimitingOptions limits)
+    {
+        foreach (var bucket in new[] { limits.SignIn, limits.Docs, limits.Reads, limits.Search, limits.Verify, limits.Writes, limits.AllWrites })
+            (bucket.TokenLimit, bucket.TokensPerPeriod) = (bucket.TokenLimit * 1000, bucket.TokensPerPeriod * 1000);
+        foreach (var gate in new[] { limits.SearchesAtOnce, limits.VerificationsAtOnce })
+            gate.PermitLimit *= 1000;
     }
 
     /// <summary>Stops the host, then the container.</summary>
