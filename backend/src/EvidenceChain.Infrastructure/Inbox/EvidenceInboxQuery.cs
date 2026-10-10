@@ -29,9 +29,9 @@ internal sealed class EvidenceInboxQuery(AppDbContext db) : IEvidenceInboxQuery
         }
 
         var newestFirst = filter.Sort == InboxSort.NewestFirst;
-        if (filter.After is { } after)
+        if (filter.Seek is { Direction: SeekDirection.Forward } seek)
         {
-            var (at, id) = (after.LastEventAtUtc, after.EvidenceId);
+            var (at, id) = (seek.From.LastEventAtUtc, seek.From.EvidenceId);
             rows = newestFirst
                 ? rows.Where(r => r.LastEventAtUtc < at || (r.LastEventAtUtc == at && r.EvidenceId < id))
                 : rows.Where(r => r.LastEventAtUtc > at || (r.LastEventAtUtc == at && r.EvidenceId > id));
@@ -54,6 +54,7 @@ internal sealed class EvidenceInboxQuery(AppDbContext db) : IEvidenceInboxQuery
             .ToListAsync(cancellationToken);
 
         var items = page.Take(filter.Limit).ToList();
-        return new InboxPage(items.Select(r => r.Summary).ToList(), page.Count > filter.Limit ? items[^1].Position : null);
+        var next = page.Count > filter.Limit ? KeysetSeek.After(items[^1].Position) : null;
+        return new InboxPage(items.Select(r => r.Summary).ToList(), next, null);
     }
 }

@@ -52,8 +52,8 @@ public sealed class EvidenceController(IEvidenceInboxQuery inbox, IEvidenceQueri
             sort == OldestFirst ? InboxSort.OldestFirst : InboxSort.NewestFirst, limit);
         if (cursor is not null)
         {
-            if (InboxCursor.TryDecode(cursor, filter, out var after))
-                filter = filter with { After = after };
+            if (InboxCursor.TryDecode(cursor, filter, out var seek))
+                filter = filter with { Seek = seek };
             else
                 ModelState.AddModelError(nameof(cursor), "Not a cursor this API issued for these filters and sort; start again without it.");
         }
