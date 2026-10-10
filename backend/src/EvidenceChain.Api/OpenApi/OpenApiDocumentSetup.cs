@@ -70,13 +70,18 @@ internal static class OpenApiDocumentSetup
         }
     }
 
-    /// <summary>The headers a success carries: ETag, the replay flag on idempotent writes, and Location on 201.</summary>
+    /// <summary>The headers a response carries: ETag, the replay flag on idempotent writes, Location on 201, Retry-After on 429.</summary>
     private static void DeclareResponseHeaders(OpenApiOperation operation, IList<object> metadata)
     {
         var etag = metadata.OfType<ReturnsETagAttribute>().Any();
         var replayable = metadata.OfType<RequireIdempotencyKeyAttribute>().Any();
         foreach (var (status, response) in operation.Responses ?? [])
         {
+            if (status == "429" && response is OpenApiResponse throttled)
+            {
+                throttled.Headers ??= new Dictionary<string, IOpenApiHeader>();
+                throttled.Headers["Retry-After"] = Header("Seconds to wait before trying again; nothing was done.", JsonSchemaType.Integer);
+            }
             if (!status.StartsWith('2') || response is not OpenApiResponse success)
                 continue;
             success.Headers ??= new Dictionary<string, IOpenApiHeader>();
@@ -88,7 +93,8 @@ internal static class OpenApiDocumentSetup
                 success.Headers["Location"] = Header("Where the created resource can be read.");
         }
 
-        static OpenApiHeader Header(string description) => new() { Description = description, Schema = new OpenApiSchema { Type = JsonSchemaType.String } };
+        static OpenApiHeader Header(string description, JsonSchemaType type = JsonSchemaType.String) =>
+            new() { Description = description, Schema = new OpenApiSchema { Type = type } };
     }
 
     private static void AddHeader(OpenApiOperation operation, string name, string? format, string description)

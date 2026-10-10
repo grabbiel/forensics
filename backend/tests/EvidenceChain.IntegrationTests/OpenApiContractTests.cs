@@ -21,9 +21,9 @@ public sealed class OpenApiContractTests(ApiFactory factory)
 
     // The committed contract equals the live one (above), so this checks what is published.
     [Theory]
-    [InlineData("/api/v1/custody-transfers", false, new[] { "201", "400", "401", "403", "409", "422" })]
-    [InlineData("/api/v1/custody-transfers/{id}/accept", true, new[] { "200", "400", "401", "403", "404", "409", "422", "428" })]
-    [InlineData("/api/v1/custody-transfers/{id}/reject", true, new[] { "200", "400", "401", "403", "404", "409", "422", "428" })]
+    [InlineData("/api/v1/custody-transfers", false, new[] { "201", "400", "401", "403", "409", "422", "429" })]
+    [InlineData("/api/v1/custody-transfers/{id}/accept", true, new[] { "200", "400", "401", "403", "404", "409", "422", "428", "429" })]
+    [InlineData("/api/v1/custody-transfers/{id}/reject", true, new[] { "200", "400", "401", "403", "404", "409", "422", "428", "429" })]
     public async Task Every_write_declares_its_headers_and_problem_responses(string path, bool ifMatch, string[] statuses)
     {
         var document = await factory.CreateClient().GetFromJsonAsync<JsonElement>("/openapi/v1.json", TestContext.Current.CancellationToken);
