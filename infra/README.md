@@ -99,6 +99,7 @@ A change under `infra/` (such as app settings) needs `azd provision` before `azd
 
 - **`ProvisioningDisabled: Provisioning is restricted in this region`** for the SQL server. Some subscriptions can't create Azure SQL servers in busy regions; on this project's subscription, East US 2, East US and North Central US were blocked. Pick a region that allows it (this deployment uses Central US), then run `azd down --purge`, `azd env set AZURE_LOCATION <region>` and `azd provision`.
 - **`CREATE USER … FROM EXTERNAL PROVIDER` fails in step 4.** The SQL admin must be able to read the directory. A guest or Microsoft-account admin needs a directory role (for example, the subscription creator's Global Administrator).
+- **Every request appears twice in Application Insights** (in its Logs, `requests | summarize count() by sdkVersion` shows an `al_aspnet5c` row). Enabling Application Insights on the web app's portal blade turned on App Service's codeless agent; `azd provision` turns it off again.
 - **The API can't reach SQL after the plan was scaled or moved.** App Service outbound IPs changed. Delete the old rules and re-provision:
 
   ```bash

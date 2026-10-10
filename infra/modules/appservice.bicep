@@ -51,8 +51,11 @@ resource webApp 'Microsoft.Web/sites@2025-03-01' = {
       healthCheckPath: '/api/v1/health/live'
       appSettings: concat(
         [
-          // The app exports through OpenTelemetry (Azure Monitor distro) when this is set; no codeless agent.
+          // The app's Azure Monitor OpenTelemetry distro exports when this is set. App Service's codeless agent would
+          // record each request again, counting 4xx as failures and locating clients by forgeable X-Forwarded-For.
           { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.properties.ConnectionString }
+          // So the agent is pinned off. The portal's Application Insights blade sets ~3; the next provision undoes it.
+          { name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: 'disabled' }
           {
             name: 'ConnectionStrings__Default'
             value: 'Server=tcp:${sqlServerFqdn},1433;Database=${sqlDatabaseName};Authentication=Active Directory Managed Identity;Encrypt=True;'
