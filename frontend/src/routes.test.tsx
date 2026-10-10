@@ -74,7 +74,7 @@ function fakeApi(overrides: (url: string, init?: RequestInit) => Response | unde
     }
     if (url === `/api/v1/evidence/${detail.code}`) return json(200, detail)
     if (url === `/api/v1/evidence/${detail.code}/chain`) return json(200, chain)
-    if (url === '/api/v1/evidence' || url.startsWith('/api/v1/evidence?')) return json(200, { items: [], nextCursor: null })
+    if (url === '/api/v1/evidence' || url.startsWith('/api/v1/evidence?')) return json(200, { items: [], nextCursor: null, prevCursor: null })
     if (url.startsWith('/api/v1/people')) return json(200, [])
     return json(404, { status: 404 }, 'application/problem+json')
   })
