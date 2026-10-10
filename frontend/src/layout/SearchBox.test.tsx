@@ -156,6 +156,23 @@ describe('SearchBox', () => {
 
     expect(url(router.state.location)).toBe('/?type=CSV&q=vpn')
     expect(loads).toEqual(['/?type=CSV', '/?type=CSV&q=vpn'])
+    await act(() => router.navigate(-1)) // the tab's new entry is kept, so Back undoes both
+    expect(url(router.state.location)).toBe('/?type=LOG')
+  })
+
+  it('keeps the page before an Enter when a pause refines it before it loads', async () => {
+    const { router, hold, input } = renderSearch(['/?type=LOG'])
+    const release = hold('inbox')
+
+    typeInto(input, 'b')
+    await submit(input)
+    typeInto(input, 'bc')
+    await advance(DEBOUNCE_MS)
+    await act(async () => release())
+
+    expect(url(router.state.location)).toBe('/?type=LOG&q=bc')
+    await act(() => router.navigate(-1))
+    expect(url(router.state.location)).toBe('/?type=LOG')
   })
 
   it('lets a slow Back win over a pause that ends while it loads, even to the same search', async () => {
@@ -186,6 +203,23 @@ describe('SearchBox', () => {
     expect(url(router.state.location)).toBe('/?q=fire+edge&type=LOG')
     expect(loads).toEqual(['/?q=fire+ed', '/?q=fire+ed&type=LOG', '/?q=fire+edge&type=LOG'])
     expect(input).toHaveValue('fire edge')
+  })
+
+  it('lets a Back that lands just as the pause ends win, before React has rendered it', async () => {
+    const { router, loads, hold, input } = renderSearch(['/?q=fire', '/?q=fire&type=LOG'], 1)
+    const release = hold('inbox')
+
+    typeInto(input, 'fire edge')
+    await advance(DEBOUNCE_MS - 1)
+    await act(async () => {
+      void router.navigate(-1)
+      release() // Back lands; React renders it in a transition, once the act is over
+      await vi.advanceTimersByTimeAsync(1)
+    })
+
+    expect(url(router.state.location)).toBe('/?q=fire')
+    expect(loads).toEqual(['/?q=fire'])
+    expect(input).toHaveValue('fire')
   })
 
   it('drops a pending write when Back lands, even on the same search', async () => {
@@ -291,6 +325,29 @@ describe('SearchBox', () => {
       expect(url(router.state.location)).toBe(`/evidence/${code}`)
     })
 
+    it('keeps refining after a tab on the inbox it opened, though it refined before React caught up', async () => {
+      const { router, hold, input } = renderSearch([`/evidence/${code}`])
+      const releaseSearch = hold('inbox')
+
+      typeInto(input, 'firewall')
+      await submit(input)
+      typeInto(input, 'firewall edge')
+      await advance(DEBOUNCE_MS - 1)
+      let releaseRest = () => {}
+      await act(async () => {
+        releaseSearch() // the search lands; React renders it in a transition, once the act is over
+        releaseRest = hold('inbox')
+        await vi.advanceTimersByTimeAsync(1)
+      })
+      act(() => void router.navigate('/?q=firewall+edge&type=LOG')) // the LOG tab, built on the refinement loading
+      typeInto(input, 'firewall edge 01')
+      await advance(DEBOUNCE_MS)
+      await act(async () => releaseRest())
+
+      expect(url(router.state.location)).toBe('/?q=firewall+edge+01&type=LOG')
+      expect(input).toHaveValue('firewall edge 01')
+    })
+
     it('says what it is looking for while that search loads, and leaves it to the inbox once there', async () => {
       const { router, hold, input } = renderSearch([`/evidence/${code}`])
       const release = hold('inbox')
@@ -316,10 +373,46 @@ describe('SearchBox', () => {
         fireEvent.submit(input.closest('form')!)
       })
       expect(screen.getByRole('status')).toHaveTextContent('Buscando «firewall»…')
+      expect(input).toHaveValue('firewall') // React showing that page is no reason to drop the search
       await act(async () => release())
 
       expect(url(router.state.location)).toBe('/?q=firewall')
       expect(input).toHaveValue('firewall')
+    })
+
+    it('starts a new search on Enter while a Back to a filtered inbox loads, and ignores an empty one', async () => {
+      const { router, loads, hold, input } = renderSearch(['/?type=LOG', `/evidence/${code}`], 1)
+      const release = hold('inbox')
+      act(() => void router.navigate(-1))
+
+      await submit(input)
+      expect(router.state.navigation.location && url(router.state.navigation.location)).toBe('/?type=LOG')
+      typeInto(input, 'vpn')
+      await submit(input)
+      await act(async () => release())
+
+      expect(url(router.state.location)).toBe('/?q=vpn')
+      expect(loads).toEqual(['/?type=LOG', '/?q=vpn'])
+    })
+
+    it('tells a Back from React catching up, though the browser keys both pages "default"', async () => {
+      // A fresh load, then the skip link's #main: the browser gives both entries the key "default".
+      const entries = [
+        { pathname: `/evidence/${code}`, key: 'default' },
+        { pathname: `/evidence/${code}`, hash: '#main', key: 'default' },
+      ]
+      const { router, hold, input } = renderSearch(entries, 1)
+      hold('inbox')
+
+      typeInto(input, 'fire')
+      await submit(input)
+      await act(() => router.navigate(-1)) // Back, while the search loads
+
+      expect(url(router.state.location)).toBe(`/evidence/${code}`)
+      expect(input).toHaveValue('')
+      typeInto(input, 'fire')
+      await submit(input)
+      expect(router.state.navigation.location && url(router.state.navigation.location)).toBe('/?q=fire')
     })
 
     it('stays put on Enter with nothing typed', async () => {

@@ -10,12 +10,12 @@ export function usePendingSearch(): string {
 }
 
 /**
- * Edits URL search params on top of any pending navigation, read from the router as it is now, so quick successive
- * filter changes (chip, then search) compose instead of overwriting each other, even before React has rendered the
- * first or when another component made it.
+ * Edits URL search params on top of any pending navigation to the same page, read from the router as it is now, so
+ * quick successive filter changes (chip, then search) compose instead of overwriting each other, even before React has
+ * rendered the first or when another component made it. A navigation to another page (a row just clicked) says
+ * nothing about this one's search, so the edit builds on the current URL then.
  * The edit lands on the current page, or on `pathname` when given (a search sent from another page, still loading the
- * inbox); any pending navigation must be going there, since the edit builds on its search. `state` goes into the
- * history entry.
+ * inbox). `state` goes into the history entry.
  */
 export function useUpdateSearch() {
   const navigate = useNavigate()
@@ -24,7 +24,9 @@ export function useUpdateSearch() {
   return useCallback(
     (edit: (params: URLSearchParams) => void, options?: { replace?: boolean; pathname?: string; state?: unknown }) => {
       const { location, navigation } = routerNow()
-      const params = new URLSearchParams((navigation.location ?? location).search)
+      const pathname = options?.pathname ?? location.pathname
+      const base = [navigation.location, location].find((at) => at?.pathname === pathname)
+      const params = new URLSearchParams(base?.search)
       edit(params)
       const search = params.size > 0 ? `?${params}` : ''
       void navigate({ pathname: options?.pathname, search }, { replace: options?.replace, state: options?.state })

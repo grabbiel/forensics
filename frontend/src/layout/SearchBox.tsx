@@ -15,6 +15,9 @@ const SENT = { sentBySearchBox: true }
 const sentByBox = (location: Location, action: NavigationType | undefined) =>
   action !== NavigationType.Pop && location.state?.sentBySearchBox === true
 
+/** A visit to a page: its history key and its URL, since the browser keys a fresh load and every #fragment "default". */
+const visitOf = ({ key, pathname, search, hash }: Location) => `${key} ${pathname}${search}${hash}`
+
 /** The search the box shows at a location: the inbox's `q`, nothing on any other page. */
 const queryAt = ({ pathname, search }: Path) => (pathname === INBOX && new URLSearchParams(search).get('q')) || ''
 
@@ -34,7 +37,7 @@ export function SearchBox() {
   const onInbox = location.pathname === INBOX
   const urlQuery = queryAt(location)
   const shown = shownAt(location.pathname, urlQuery)
-  // A search of the inbox on its way, said from any other page; the inbox says so itself.
+  // A search of the inbox on its way, whoever started it, said from any other page; the inbox says so itself.
   const searching = pending && !onInbox ? queryAt(pending) : ''
   const routerNow = useRouterNow()
   const updateSearch = useUpdateSearch()
@@ -42,19 +45,21 @@ export function SearchBox() {
   const [value, setValue] = useState(urlQuery)
   const timer = useRef<number>(undefined)
   const written = useRef(shown)
-  // From sending a search from another page until a navigation lands: that search, or whatever overtook it.
-  const trip = useRef(false)
-  // The key of the page the router was on when the box last navigated, until React has rendered past it.
+  // The visit the router was on when the box last navigated, until React next renders one.
   const actedOn = useRef<string>(undefined)
+  // The visit React last rendered, which the box has adopted or kept.
+  const seen = useRef(visitOf(location))
 
   // Adopt URL changes this box didn't make (Back/Forward, "Quitar filtros", another page) and drop any pending write.
-  // Back or Forward wins even when it shows the same `q`, so it also beats a search sent from another page.
+  // The inbox's own filter changes keep the box's `q`, so a pending write builds on them. Back or Forward wins even
+  // when it shows the same `q`, so it also beats a search sent from another page.
   useEffect(() => {
+    const visit = visitOf(location)
+    seen.current = visit
     // React catching up with the page the router was on when the box last navigated: the box's navigation is newer.
-    const caughtUp = location.key === actedOn.current
+    const caughtUp = visit === actedOn.current
     actedOn.current = undefined
     if (caughtUp) return
-    trip.current = false
     if (shown === written.current && navigationType !== NavigationType.Pop) return
     written.current = shown
     window.clearTimeout(timer.current)
@@ -74,9 +79,10 @@ export function SearchBox() {
     const action = pending ? now.navigation.historyAction : now.historyAction
     if (heading.pathname !== INBOX) return false
     if (sentByBox(heading, action)) return true
-    if (pending && action === NavigationType.Pop) return false // Back or Forward on its way, adopted when it lands
+    // A Back or Forward on its way, or landed but not yet rendered, wins: the box adopts it once React shows it.
+    if (action === NavigationType.Pop && (pending || visitOf(now.location) !== seen.current)) return false
     // In step with where the inbox is going: its own filter changes carry the box's `q`; a clear or a link drops it.
-    return !trip.current && now.location.pathname === INBOX && shownAt(INBOX, queryAt(heading)) === written.current
+    return shownAt(INBOX, queryAt(heading)) === written.current
   }
 
   /** Cancels any pending write, then sets or clears the inbox's `q` unless this box last wrote or adopted the same. */
@@ -84,14 +90,17 @@ export function SearchBox() {
     window.clearTimeout(timer.current)
     const now = routerNow()
     const fromInbox = now.location.pathname === INBOX
-    const toInbox = (now.navigation.location ?? now.location).pathname === INBOX
-    if (!q && !toInbox) return // nothing to look for, so no reason to leave the page
+    const pending = now.navigation.location
+    const pendingAction = now.navigation.historyAction
+    // Builds on the inbox the user is on, or on the search this box sent and is still loading; from anything else (a
+    // row, a link, a Back to some filtered inbox from another page) it starts a new search.
+    const builds = pending ? pending.pathname === INBOX && (fromInbox || sentByBox(pending, pendingAction)) : fromInbox
+    if (!q && !builds) return // nothing to look for, so no reason to leave the page
     if (shownAt(INBOX, q) === written.current) return
     written.current = shownAt(INBOX, q)
-    actedOn.current = now.location.key
-    if (!fromInbox) trip.current = true
-    if (!toInbox) {
-      // Heading anywhere but the inbox: a new search of the whole inbox, as a page Back leaves.
+    actedOn.current = visitOf(now.location)
+    if (!builds) {
+      // A new search of the whole inbox, as a page Back leaves.
       void navigate({ pathname: INBOX, search: `?${new URLSearchParams({ q })}` }, { state: SENT })
       return
     }
@@ -101,8 +110,9 @@ export function SearchBox() {
         else params.delete('q')
         params.delete('cursor') // a new search starts on the first page
       },
-      // Still loading a search sent from another page: replacing would drop that page from history.
-      { replace: replace && fromInbox, pathname: INBOX, state: SENT },
+      // A push still loading (a tab, Enter, a search sent from another page) keeps its new entry: replacing would
+      // overwrite the page before it instead.
+      { replace: replace && (!pending || pendingAction === NavigationType.Replace), pathname: INBOX, state: SENT },
     )
   }
 
