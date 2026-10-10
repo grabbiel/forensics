@@ -1,18 +1,55 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { createMemoryRouter } from 'react-router'
+import { createMemoryRouter, Outlet, type LoaderFunctionArgs } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEBOUNCE_MS, SearchBox } from './SearchBox'
 
-/** Mounts the search box alone, so no loader or fetch is involved. */
+const code = 'LOG202609110007'
+
+/**
+ * Mounts the search box above stand-in inbox and evidence pages, as the app shell does. Their loaders only record the
+ * URLs they load after the first render, so no fetch is involved; `hold` keeps one page loading until released.
+ */
 function renderSearch(initialEntries = ['/'], initialIndex?: number) {
-  const router = createMemoryRouter([{ path: '/', element: <SearchBox /> }], { initialEntries, initialIndex })
+  const loads: string[] = []
+  const waits: Partial<Record<'inbox' | 'evidence', Promise<void>>> = {}
+  const record = (page: 'inbox' | 'evidence') => async ({ request }: LoaderFunctionArgs) => {
+    const { pathname, search } = new URL(request.url)
+    loads.push(pathname + search)
+    await waits[page]
+    return null
+  }
+  const router = createMemoryRouter(
+    [
+      {
+        path: '/',
+        element: (
+          <>
+            <SearchBox />
+            <Outlet />
+          </>
+        ),
+        children: [
+          { id: 'inbox', index: true, loader: record('inbox') },
+          { id: 'evidence', path: 'evidence/:id', loader: record('evidence') },
+        ],
+      },
+    ],
+    { initialEntries, initialIndex, hydrationData: { loaderData: { inbox: null, evidence: null } } },
+  )
   render(<RouterProvider router={router} />)
-  return { router, input: screen.getByRole('searchbox') }
+  function hold(page: 'inbox' | 'evidence') {
+    let release = () => {}
+    waits[page] = new Promise((resolve) => (release = resolve))
+    return release
+  }
+  return { router, loads, hold, input: screen.getByRole('searchbox') }
 }
 
 const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms))
 const typeInto = (input: HTMLElement, value: string) => fireEvent.change(input, { target: { value } })
+const submit = (input: HTMLElement) => act(async () => fireEvent.submit(input.closest('form')!))
+const url = ({ pathname, search }: { pathname: string; search: string }) => pathname + search
 
 // Timer-level tests use fireEvent: user-event's async wrapper waits on a setTimeout that only Jest auto-advances.
 describe('SearchBox', () => {
@@ -36,7 +73,7 @@ describe('SearchBox', () => {
     const { router, input } = renderSearch()
 
     typeInto(input, 'vpn')
-    await act(async () => fireEvent.submit(input.closest('form')!))
+    await submit(input)
     expect(router.state.location.search).toBe('?q=vpn')
     expect(router.state.historyAction).toBe('PUSH')
 
@@ -69,8 +106,92 @@ describe('SearchBox', () => {
     const { router, input } = renderSearch(['/?q=old'])
 
     typeInto(input, '')
-    await act(async () => fireEvent.submit(input.closest('form')!))
+    await submit(input)
 
     expect(router.state.location.search).toBe('')
+  })
+
+  it('lets a page opened while the user typed load, instead of searching over it', async () => {
+    const { router, loads, hold, input } = renderSearch(['/?q=vpn'])
+    const release = hold('evidence')
+
+    typeInto(input, 'vpn fw')
+    act(() => void router.navigate(`/evidence/${code}`)) // a row clicked before the pause ends
+    await advance(DEBOUNCE_MS)
+    await act(async () => release())
+
+    expect(url(router.state.location)).toBe(`/evidence/${code}`)
+    expect(loads).toEqual([`/evidence/${code}`])
+    expect(input).toHaveValue('')
+  })
+
+  describe('on any other page', () => {
+    it('searches nothing and reloads nothing while the user types', async () => {
+      const { router, loads, input } = renderSearch([`/evidence/${code}`])
+
+      typeInto(input, 'firewall')
+      await advance(DEBOUNCE_MS * 2)
+
+      expect(url(router.state.location)).toBe(`/evidence/${code}`)
+      expect(loads).toEqual([])
+      expect(input).toHaveValue('firewall')
+    })
+
+    it('opens the inbox on Enter with only that search, as a new page Back returns from', async () => {
+      // The page's own URL may carry a q and cursor that an older box wrote there; they say nothing about the inbox.
+      const { router, loads, input } = renderSearch(['/?type=LOG', `/evidence/${code}?q=old&cursor=abc`], 1)
+      expect(input).toHaveValue('')
+
+      typeInto(input, 'firewall')
+      await submit(input)
+
+      expect(url(router.state.location)).toBe('/?q=firewall')
+      expect(router.state.historyAction).toBe('PUSH')
+      expect(loads).toEqual(['/?q=firewall'])
+      expect(input).toHaveValue('firewall')
+
+      await act(() => router.navigate(-1))
+      expect(url(router.state.location)).toBe(`/evidence/${code}?q=old&cursor=abc`)
+      expect(input).toHaveValue('')
+    })
+
+    it('keeps searching what the user types while the inbox loads, and keeps the page they left', async () => {
+      const { router, loads, hold, input } = renderSearch([`/evidence/${code}`])
+      const release = hold('inbox')
+
+      typeInto(input, 'firewall')
+      await submit(input)
+      typeInto(input, 'firewall edge')
+      await advance(DEBOUNCE_MS)
+      await act(async () => release())
+
+      expect(url(router.state.location)).toBe('/?q=firewall+edge')
+      expect(loads).toEqual(['/?q=firewall', '/?q=firewall+edge'])
+      expect(input).toHaveValue('firewall edge')
+
+      await act(() => router.navigate(-1))
+      expect(url(router.state.location)).toBe(`/evidence/${code}`)
+    })
+
+    it('stays put on Enter with nothing typed', async () => {
+      const { router, loads, input } = renderSearch([`/evidence/${code}`])
+
+      typeInto(input, '  ')
+      await submit(input)
+
+      expect(url(router.state.location)).toBe(`/evidence/${code}`)
+      expect(loads).toEqual([])
+    })
+
+    it('drops what was typed but never sent once the user goes to another page', async () => {
+      const { router, input } = renderSearch([`/evidence/${code}`])
+
+      typeInto(input, 'fire')
+      await advance(DEBOUNCE_MS)
+      await act(() => router.navigate('/')) // the brand link
+
+      expect(url(router.state.location)).toBe('/')
+      expect(input).toHaveValue('')
+    })
   })
 })
