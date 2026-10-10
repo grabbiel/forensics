@@ -184,14 +184,32 @@ describe('SearchBox', () => {
     })
 
     it('drops what was typed but never sent once the user goes to another page', async () => {
-      const { router, input } = renderSearch([`/evidence/${code}`])
+      const { router, loads, input } = renderSearch([`/evidence/${code}`])
 
       typeInto(input, 'fire')
       await advance(DEBOUNCE_MS)
       await act(() => router.navigate('/')) // the brand link
 
       expect(url(router.state.location)).toBe('/')
+      expect(loads).toEqual(['/'])
       expect(input).toHaveValue('')
+    })
+
+    it('drops it too when the user goes back to the inbox before the pause ends, however long the inbox takes', async () => {
+      const { router, loads, hold, input } = renderSearch(['/?type=LOG', `/evidence/${code}`], 1)
+      const release = hold('inbox')
+
+      typeInto(input, 'fire')
+      act(() => void router.navigate(-1))
+      await advance(DEBOUNCE_MS)
+      await act(async () => release())
+
+      expect(url(router.state.location)).toBe('/?type=LOG')
+      expect(loads).toEqual(['/?type=LOG'])
+      expect(input).toHaveValue('')
+
+      await act(() => router.navigate(1)) // the evidence page is still one Forward away
+      expect(url(router.state.location)).toBe(`/evidence/${code}`)
     })
   })
 })

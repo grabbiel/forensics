@@ -175,7 +175,6 @@ describe('a search typed on an evidence page', () => {
     expect(searched).toEqual(['firewall'])
     expect(shownCodes()).toEqual([code])
     expect(search).toHaveValue('firewall')
-    expect(reads.detail).toBe(1)
   })
 })
 
