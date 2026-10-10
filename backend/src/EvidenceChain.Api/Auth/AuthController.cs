@@ -1,7 +1,9 @@
 using System.ComponentModel.DataAnnotations;
+using EvidenceChain.Api.RateLimiting;
 using EvidenceChain.Application.People;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace EvidenceChain.Api.Auth;
 
@@ -9,6 +11,7 @@ namespace EvidenceChain.Api.Auth;
 [ApiController]
 [Route("api/v1/auth")]
 [AllowAnonymous]
+[EnableRateLimiting(RateLimitPolicies.SignIn)]
 public sealed class AuthController(IUserDirectory users, TokenIssuer tokens) : ControllerBase
 {
     /// <summary>Signs in as a seeded demo user and returns a bearer token.</summary>

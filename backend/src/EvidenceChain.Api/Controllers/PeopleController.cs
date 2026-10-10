@@ -1,14 +1,17 @@
 using System.ComponentModel.DataAnnotations;
+using EvidenceChain.Api.RateLimiting;
 using EvidenceChain.Application.People;
 using EvidenceChain.Domain.People;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace EvidenceChain.Api.Controllers;
 
 /// <summary>Who can be named in filters and transfers.</summary>
 [ApiController]
 [Authorize]
+[EnableRateLimiting(RateLimitPolicies.Reads)]
 [Route("api/v1/people")]
 public sealed class PeopleController(IUserDirectory users) : ControllerBase
 {

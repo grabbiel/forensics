@@ -31,4 +31,7 @@ public static class ProblemTypes
 
     /// <summary>409: every code for that evidence type and day is taken.</summary>
     public const string DailyIndexExhausted = Prefix + "daily-index-exhausted";
+
+    /// <summary>429: too many requests; Retry-After says when to try again. Sent before the endpoint runs, so nothing changed.</summary>
+    public const string RateLimited = Prefix + "rate-limited";
 }

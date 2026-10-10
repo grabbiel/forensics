@@ -5,6 +5,7 @@ using EvidenceChain.Api.Http;
 using EvidenceChain.Api.Integrity;
 using EvidenceChain.Api.OpenApi;
 using EvidenceChain.Api.Problems;
+using EvidenceChain.Api.RateLimiting;
 using EvidenceChain.Api.Security;
 using EvidenceChain.Api.Telemetry;
 using EvidenceChain.Application.Anomalies;
@@ -41,6 +42,7 @@ builder.Services.AddInfrastructure(connectionString);
 builder.Services.AddEvidenceChainAuth();
 builder.Services.AddEvidenceChainTelemetry(builder.Configuration);
 builder.Services.AddEvidenceReview();
+builder.Services.AddEvidenceChainRateLimiting();
 
 // Anomaly rules read the deadline from configuration and the time from an injectable clock.
 builder.Services.AddSingleton(TimeProvider.System);
@@ -61,7 +63,7 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
     .WithOrigins(corsOrigins)
     .AllowAnyHeader()
     .AllowAnyMethod()
-    .WithExposedHeaders("ETag", "Location", "Idempotent-Replayed")));
+    .WithExposedHeaders("ETag", "Location", "Idempotent-Replayed", "Retry-After")));
 
 var app = builder.Build();
 
@@ -74,10 +76,12 @@ app.Use(NoStoreForApi);
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization(); // secure by default: only what is marked AllowAnonymous skips it
+// After auth, so buckets key on the validated user and a request without a token is a cheap 401 that spends none.
+app.UseRateLimiter();
 
-app.MapOpenApi().AllowAnonymous();
-app.MapOpenApi("/openapi/{documentName}.yaml").AllowAnonymous();
-app.MapHealthChecks("/api/v1/health/live").AllowAnonymous();
+app.MapOpenApi().AllowAnonymous().RequireRateLimiting(RateLimitPolicies.Docs);
+app.MapOpenApi("/openapi/{documentName}.yaml").AllowAnonymous().RequireRateLimiting(RateLimitPolicies.Docs);
+app.MapHealthChecks("/api/v1/health/live").AllowAnonymous().DisableRateLimiting(); // App Service's probe must always get through
 app.MapControllers();
 
 app.Run();

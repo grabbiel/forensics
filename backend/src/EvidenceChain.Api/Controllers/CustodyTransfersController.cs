@@ -2,17 +2,20 @@ using System.ComponentModel.DataAnnotations;
 using EvidenceChain.Api.Auth;
 using EvidenceChain.Api.Http;
 using EvidenceChain.Api.Problems;
+using EvidenceChain.Api.RateLimiting;
 using EvidenceChain.Application.Custody;
 using EvidenceChain.Domain.Custody;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace EvidenceChain.Api.Controllers;
 
 /// <summary>Journey 2: an Investigador asks for a transfer and its recipient accepts or rejects it.</summary>
 [ApiController]
 [Authorize]
+[EnableRateLimiting(RateLimitPolicies.Reads)]
 [Route("api/v1/custody-transfers")]
 public sealed class CustodyTransfersController(ICustodyTransfers transfers, IAuthorizationService authorization) : ControllerBase
 {
@@ -40,6 +43,7 @@ public sealed class CustodyTransfersController(ICustodyTransfers transfers, IAut
     // No param tags: the XML-comment generator would describe the body with the cancellation token's text.
     [HttpPost]
     [Authorize(Policy = Policies.Investigador)]
+    [EnableRateLimiting(RateLimitPolicies.Writes)]
     [RequireIdempotencyKey]
     [ReturnsETag]
     [ProducesResponseType<TransferResource>(StatusCodes.Status201Created, "application/json")]
@@ -60,6 +64,7 @@ public sealed class CustodyTransfersController(ICustodyTransfers transfers, IAut
     /// </remarks>
     [HttpPost("{id:long}/accept")]
     [Authorize(Policy = Policies.Custodio)]
+    [EnableRateLimiting(RateLimitPolicies.Writes)]
     [RequireIdempotencyKey]
     [RequireIfMatch]
     [ReturnsETag]
@@ -75,6 +80,7 @@ public sealed class CustodyTransfersController(ICustodyTransfers transfers, IAut
     /// <remarks>Same If-Match and Idempotency-Key rules as accept.</remarks>
     [HttpPost("{id:long}/reject")]
     [Authorize(Policy = Policies.Custodio)]
+    [EnableRateLimiting(RateLimitPolicies.Writes)]
     [RequireIdempotencyKey]
     [RequireIfMatch]
     [ReturnsETag]
