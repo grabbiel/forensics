@@ -14,12 +14,12 @@ Evidence Chain records digital evidence, its custody history and its transfers. 
 
 | Query | Reads | Plan |
 |---|---|---|
-| First page; one custodian | ≈ 89 | Index scan or seek, 26 key lookups |
-| Last page by keyset | ≈ 88 | Index seek (cursor supplied) |
-| Last page by `OFFSET` | 653 | Scan and sort of all rows, 23 ms |
-| Text search | 653 | Clustered scan, ≈ 50 ms |
+| First page; one custodian | ≈ 10; ≈ 6 | Index scan or seek, no lookups |
+| Last page by keyset | ≈ 9 | Index seek (cursor supplied) |
+| Last page by `OFFSET` | 592 | Scan of all rows, 9 ms |
+| Text search | 16 to 592 | Index scan, 8 to 54 ms |
 
-Keyset cost stays flat with depth; `OFFSET` reads the whole table. At 1,000 items every query scans the clustered index (35 pages locally, 40 on Azure SQL S1) in under 3 ms.
+Keyset cost stays flat with depth; `OFFSET` reads all rows. Covering indexes cost writes: an inbox update reads 47 pages, not 19. At 1,000 items no query reads over 33 pages or takes 3 ms.
 
 ## Not tested, and why
 
