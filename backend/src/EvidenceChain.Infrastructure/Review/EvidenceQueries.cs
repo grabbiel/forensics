@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EvidenceChain.Infrastructure.Review;
 
-internal sealed class EvidenceQueries(AppDbContext db, OverdueTransferRule overdue) : IEvidenceQueries
+internal sealed class EvidenceQueries(AppDbContext db, OverdueTransferRule overdue, PeopleIndexProvider peopleIndex) : IEvidenceQueries
 {
     public async Task<EvidenceDetail?> GetDetailAsync(string code, CancellationToken cancellationToken)
     {
@@ -38,7 +38,7 @@ internal sealed class EvidenceQueries(AppDbContext db, OverdueTransferRule overd
             return null;
 
         var (evidence, inbox, transfers) = (read.Evidence, read.Inbox, read.Transfers);
-        var people = await PeopleIndex.LoadAsync(db, cancellationToken);
+        var people = await peopleIndex.GetAsync(cancellationToken);
 
         var pending = transfers.SingleOrDefault(t => t.Status == TransferStatus.Pending);
         var anomalies = transfers
@@ -67,7 +67,7 @@ internal sealed class EvidenceQueries(AppDbContext db, OverdueTransferRule overd
             return null;
 
         var events = await db.CustodyEvents.AsNoTracking().Where(e => e.EvidenceId == evidenceId).OrderBy(e => e.Seq).ToListAsync(cancellationToken);
-        var people = await PeopleIndex.LoadAsync(db, cancellationToken);
+        var people = await peopleIndex.GetAsync(cancellationToken);
         return new EvidenceChainView(code, events.Select(e => new ChainEventView(
             e.CustodyEventId, e.Seq, e.Kind, e.OccurredAtUtc, people.Of(e.ActorId),
             e.FromCustodianId is { } from ? people.Of(from) : null,

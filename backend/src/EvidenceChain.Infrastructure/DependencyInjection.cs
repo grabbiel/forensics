@@ -27,6 +27,8 @@ public static class DependencyInjection
         services.AddScoped<IEvidenceQueries, EvidenceQueries>();
         services.AddScoped<IChainVerificationStore, ChainVerificationStore>();
         services.AddScoped<ICustodyTransfers, CustodyTransferService>();
+        services.AddMemoryCache();
+        services.AddScoped<PeopleIndexProvider>();
         return services;
     }
 }

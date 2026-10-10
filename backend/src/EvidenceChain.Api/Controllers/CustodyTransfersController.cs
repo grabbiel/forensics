@@ -93,7 +93,7 @@ public sealed class CustodyTransfersController(ICustodyTransfers transfers, IAut
 
     private async Task<ActionResult<TransferResource>> DecideAsync(long id, TransferCommand command, string? notes, CancellationToken cancellationToken)
     {
-        if (await transfers.GetAsync(id, cancellationToken) is not { } transfer)
+        if (await transfers.FindAsync(id, cancellationToken) is not { } transfer)
             return NotFoundProblem(id);
         if (!(await authorization.AuthorizeAsync(User, transfer, Policies.TransferRecipient)).Succeeded)
             return Forbid();

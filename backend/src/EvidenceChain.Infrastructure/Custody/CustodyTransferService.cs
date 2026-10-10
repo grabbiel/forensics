@@ -19,7 +19,7 @@ namespace EvidenceChain.Infrastructure.Custody;
 /// everything read after the lock is the latest committed state. Clients still get optimistic concurrency: If-Match
 /// decides the 409, and no lock is held between a client's read and its write.
 /// </summary>
-internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing keys, TimeProvider clock) : ICustodyTransfers
+internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing keys, TimeProvider clock, PeopleIndexProvider peopleIndex) : ICustodyTransfers
 {
     private const string RequestKeyIndex = "UX_CustodyTransfers_RequestKey";
     private const string OnePendingIndex = "UX_CustodyTransfers_OnePendingPerEvidence";
@@ -30,7 +30,7 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
     public async Task<TransferResource?> GetAsync(long transferId, CancellationToken cancellationToken)
     {
         var transfer = await db.CustodyTransfers.AsNoTracking().SingleOrDefaultAsync(t => t.TransferId == transferId, cancellationToken);
-        return transfer is null ? null : await RepresentAsync(transfer, cancellationToken);
+        return transfer is null ? null : await RepresentAsync(transfer, code:null, cancellationToken);
     }
 
     public async Task<TransferOutcome> RequestAsync(TransferRequest request, Actor requester, Guid idempotencyKey, byte[] fingerprint, CancellationToken cancellationToken)
@@ -120,11 +120,11 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
         await db.SaveChangesAsync(cancellationToken); // assigns the id its event cites
 
         db.CustodyEvents.Add(CustodyLedger.Append(keys, evidence, transfer, CustodyEventKind.TransferRequested, requester.UserId, now));
-        var people = await PeopleIndex.LoadAsync(db, cancellationToken);
+        var people = await peopleIndex.GetAsync(cancellationToken);
         Project(await InboxRowAsync(evidence, cancellationToken), evidence, transfer, now, people);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new TransferOutcome(await RepresentAsync(transfer, cancellationToken), Replayed: false);
+        return new TransferOutcome(await RepresentAsync(transfer, evidence.Code, cancellationToken), Replayed: false);
     }
 
     private async Task<TransferOutcome> DecideOnceAsync(
@@ -158,16 +158,16 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
 
         var kind = command == TransferCommand.Accept ? CustodyEventKind.TransferAccepted : CustodyEventKind.TransferRejected;
         db.CustodyEvents.Add(CustodyLedger.Append(keys, evidence, transfer, kind, decider.UserId, now));
-        var people = await PeopleIndex.LoadAsync(db, cancellationToken);
+        var people = await peopleIndex.GetAsync(cancellationToken);
         Project(await InboxRowAsync(evidence, cancellationToken), evidence, transfer, now, people);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new TransferOutcome(await RepresentAsync(transfer, cancellationToken), Replayed: false);
+        return new TransferOutcome(await RepresentAsync(transfer, evidence.Code, cancellationToken), Replayed: false);
     }
 
     private async Task<TransferOutcome> ReplayDecisionAsync(CustodyTransfer transfer, Actor decider, Guid key, byte[] fingerprint, CancellationToken cancellationToken) =>
         transfer.DecidedById == decider.UserId && transfer.DecisionFingerprint is { } previous && previous.SequenceEqual(fingerprint)
-            ? new TransferOutcome(await RepresentAsync(transfer, cancellationToken), Replayed: true)
+            ? new TransferOutcome(await RepresentAsync(transfer, code:null, cancellationToken), Replayed: true)
             : throw new IdempotencyKeyReusedException(key);
 
     private async Task<TransferOutcome?> ReplayRequestAsync(Actor requester, Guid key, byte[] fingerprint, CancellationToken cancellationToken)
@@ -177,7 +177,7 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
         if (existing is null)
             return null;
         return existing.RequestFingerprint.SequenceEqual(fingerprint)
-            ? new TransferOutcome(await RepresentAsync(existing, cancellationToken), Replayed: true)
+            ? new TransferOutcome(await RepresentAsync(existing, code:null, cancellationToken), Replayed: true)
             : throw new IdempotencyKeyReusedException(key);
     }
 
@@ -212,14 +212,17 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
         inbox.PendingSinceUtc = pending ? transfer.RequestedAtUtc : null;
     }
 
-    private async Task<TransferResource> RepresentAsync(CustodyTransfer transfer, CancellationToken cancellationToken)
+    private async Task<TransferResource> RepresentAsync(CustodyTransfer transfer, string? code, CancellationToken cancellationToken)
     {
-        var code = await db.Evidence.Where(e => e.EvidenceId == transfer.EvidenceId).Select(e => e.Code).SingleAsync(cancellationToken);
-        var people = await PeopleIndex.LoadAsync(db, cancellationToken);
+        code ??= await db.Evidence.Where(e => e.EvidenceId == transfer.EvidenceId).Select(e => e.Code).SingleAsync(cancellationToken);
+        var people = await peopleIndex.GetAsync(cancellationToken);
         return new TransferResource(
             transfer.TransferId, code, transfer.Status, people.Of(transfer.FromCustodianId), people.Of(transfer.ToCustodianId),
             people.Of(transfer.RequestedById), transfer.RequestedAtUtc, transfer.Reason,
             transfer.DecidedById is { } decidedBy ? people.Of(decidedBy) : null, transfer.DecidedAtUtc, transfer.DecisionNotes,
             EntityTags.Format(transfer.RowVersion));
     }
+
+    public Task<CustodyTransfer?> FindAsync(long transferId, CancellationToken cancellationToken) => 
+        db.CustodyTransfers.AsNoTracking().SingleOrDefaultAsync(t => t.TransferId == transferId, cancellationToken);
 }
