@@ -8,7 +8,7 @@ import { useRouterNow } from './useRouterNow'
  */
 export const CLEARS_FILTERS = { clearsFilters: true }
 
-/** Whether `location` is an entry "Quitar filtros" made, or an edit that took its place while it loaded. */
+/** Whether `location` is an entry "Quitar filtros" made, or an edit that took the place of one on its way. */
 export const clearsFilters = (location: Location) => location.state?.clearsFilters === CLEARS_FILTERS.clearsFilters
 
 /** Search string of the pending navigation when it stays on this page, else of the current URL. */
@@ -24,8 +24,9 @@ export function usePendingSearch(): string {
  * rendered the first or when another component made it. A navigation to another page (a row just clicked) says
  * nothing about this one's search, so the edit builds on the current URL then.
  * The edit lands on the current page, or on `pathname` when given (a search sent from another page, still loading the
- * inbox). `state` goes into the history entry; an edit built on "Quitar filtros" still loading takes its place, so
- * without a `state` of its own it keeps the clear's.
+ * inbox). `state` goes into the history entry. An edit built on a pending navigation to an entry "Quitar filtros" made
+ * (the clear itself, or Back or Forward to one) takes its place, so without a `state` of its own it keeps the clear's;
+ * one built on such an entry once it has landed does not.
  */
 export function useUpdateSearch() {
   const navigate = useNavigate()

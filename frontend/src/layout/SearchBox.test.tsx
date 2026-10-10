@@ -306,6 +306,47 @@ describe('SearchBox', () => {
       expect(input).toHaveValue('')
     })
 
+    it('keeps winning when the pause has yielded to it and a tab then takes its place', async () => {
+      const { router, hold, input } = renderSearch(['/?type=LOG'])
+      const release = hold('inbox')
+
+      typeInto(input, 'vpn')
+      act(() => void clear(router))
+      await advance(DEBOUNCE_MS) // the pause yields to the clear
+      fireEvent.click(screen.getByRole('button', { name: 'CSV' }))
+      await act(async () => release())
+
+      expect(url(router.state.location)).toBe('/?type=CSV')
+      expect(input).toHaveValue('') // not left showing a search nothing will run
+    })
+
+    it('still sends on Enter while it loads, and refines that search as usual', async () => {
+      const { router, hold, input } = renderSearch(['/?type=LOG'])
+      const release = hold('inbox')
+
+      typeInto(input, 'vpn')
+      act(() => void clear(router))
+      await submit(input)
+      typeInto(input, 'vpn edge')
+      await advance(DEBOUNCE_MS)
+      await act(async () => release())
+
+      expect(url(router.state.location)).toBe('/?q=vpn+edge')
+      expect(input).toHaveValue('vpn edge')
+    })
+
+    it('searches as usual while the cleared inbox reloads its data, which is no navigation', async () => {
+      const { router, hold, input } = renderSearch(['/?type=LOG'])
+
+      await act(() => clear(router))
+      hold('inbox')
+      act(() => void router.revalidate()) // "Reintentar" on an inbox that failed to load
+      typeInto(input, 'vpn')
+      await advance(DEBOUNCE_MS)
+
+      expect(router.state.navigation.location && url(router.state.navigation.location)).toBe('/?q=vpn')
+    })
+
     it('searches as usual once the clear is shown', async () => {
       const { router, input } = renderSearch(['/?type=LOG'])
 
