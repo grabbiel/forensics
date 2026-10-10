@@ -11,6 +11,9 @@ export function usePendingSearch(): string {
 /**
  * Edits URL search params on top of any pending navigation, so quick successive
  * filter changes (chip, then search) compose instead of overwriting each other.
+ * The edit lands on the current page, or on `pathname` when given (a search sent
+ * from another page, still loading the inbox); any pending navigation must be going
+ * there, since the edit builds on its search.
  */
 export function useUpdateSearch() {
   const navigate = useNavigate()
@@ -22,12 +25,12 @@ export function useUpdateSearch() {
   }, [pendingSearch])
 
   return useCallback(
-    (edit: (params: URLSearchParams) => void, options?: { replace?: boolean }) => {
+    (edit: (params: URLSearchParams) => void, options?: { replace?: boolean; pathname?: string }) => {
       const params = new URLSearchParams(latest.current)
       edit(params)
       const search = params.size > 0 ? `?${params}` : ''
       latest.current = search
-      void navigate({ search }, { replace: options?.replace })
+      void navigate({ pathname: options?.pathname, search }, { replace: options?.replace })
     },
     [navigate],
   )

@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ChainEvent, EvidenceDetail, EvidenceSummary, TransferView } from './api/evidence'
 import { forgetPeople } from './api/people'
 import { clearAllIntents } from './features/transfers/pendingIntent'
+import { DEBOUNCE_MS } from './layout/SearchBox'
 import { routes } from './routes'
 import { custodians, diego, lucia, nuria, requestTo, UUID_V7 } from './test/fixtures'
 import { server, setupMsw } from './test/msw'
@@ -145,6 +146,35 @@ describe('a slow answer for an earlier filter', () => {
     expect(router.state.location.search).toBe('?type=CSV')
     expect(screen.getByRole('button', { name: 'CSV' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('status')).toHaveTextContent('1 evidencia de tipo CSV')
+  })
+})
+
+describe('a search typed on an evidence page', () => {
+  it('reads nothing again while the user types, and on Enter opens the inbox with that search', async () => {
+    signInAs('Investigador')
+    const reads = evidenceApi({ detail })
+    const searched: (string | null)[] = []
+    server.use(
+      http.get('/api/v1/evidence', ({ request }) => {
+        searched.push(new URL(request.url).searchParams.get('q'))
+        return HttpResponse.json({ items: [summary(code, 'Log del firewall')], nextCursor: null })
+      }),
+    )
+    const { router } = await openEvidence()
+    const search = screen.getByRole('searchbox')
+
+    await userEvent.type(search, 'firewall')
+    await settle(DEBOUNCE_MS * 2)
+    expect(router.state.location.pathname + router.state.location.search).toBe(`/evidence/${code}`)
+    expect(reads.detail).toBe(1)
+
+    await userEvent.keyboard('{Enter}')
+
+    await screen.findByRole('heading', { level: 1, name: 'Bandeja de evidencias' })
+    expect(router.state.location.pathname + router.state.location.search).toBe('/?q=firewall')
+    expect(searched).toEqual(['firewall'])
+    expect(shownCodes()).toEqual([code])
+    expect(search).toHaveValue('firewall')
   })
 })
 
