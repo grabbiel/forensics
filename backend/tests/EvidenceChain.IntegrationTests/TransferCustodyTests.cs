@@ -6,6 +6,7 @@ using EvidenceChain.Application.People;
 using EvidenceChain.Domain.People;
 using EvidenceChain.SyntheticData;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.SqlClient;
 
 namespace EvidenceChain.IntegrationTests;
 
@@ -265,7 +266,56 @@ public sealed class TransferCustodyTests(ApiFactory factory)
         Assert.Equal(8 * 6, statuses.Count(s => s == HttpStatusCode.Created)); // every duplicate request replays
     }
 
+    [Fact]
+    public async Task Retrying_a_committed_request_answers_while_another_write_holds_the_evidence()
+    {
+        var api = await ApiAsync();
+        var (code, _, recipient) = FreeEvidence(11);
+        var key = Guid.NewGuid();
+        Assert.Equal(HttpStatusCode.Created, (await RequestAsync(api, code, recipient, "Peritaje", key)).StatusCode);
+
+        await using var holder = await HoldEvidenceAsync(code);
+        var replay = await RequestAsync(api, code, recipient, "Peritaje", key).WaitAsync(TimeSpan.FromSeconds(5), Token);
+
+        Assert.Equal((HttpStatusCode.Created, "true"), (replay.StatusCode, replay.Headers.GetValues("Idempotent-Replayed").Single()));
+    }
+
+    [Fact]
+    public async Task Retrying_a_committed_decision_answers_while_another_write_holds_the_evidence()
+    {
+        var api = await ApiAsync();
+        var (code, _, recipient) = FreeEvidence(12);
+        var requested = await (await RequestAsync(api, code, recipient, "Peritaje", Guid.NewGuid())).Content.ReadFromJsonAsync<JsonElement>(Token);
+        var (id, etag) = (requested.GetProperty("transferId").GetInt64(), requested.GetProperty("etag").GetString());
+        var key = Guid.NewGuid();
+        Assert.Equal(HttpStatusCode.OK, (await DecideAsync(api, recipient, id, "accept", null, key, etag)).StatusCode);
+
+        await using var holder = await HoldEvidenceAsync(code);
+        var replay = await DecideAsync(api, recipient, id, "accept", null, key, etag).WaitAsync(TimeSpan.FromSeconds(5), Token);
+
+        Assert.Equal((HttpStatusCode.OK, "true"), (replay.StatusCode, replay.Headers.GetValues("Idempotent-Replayed").Single()));
+    }
+
     private Task<WebApplicationFactory<Program>> ApiAsync() => factory.SeededApiAsync("EvidenceChainTransfers");
+
+    /// <summary>
+    /// Holds the evidence's update lock as an in-flight write would, until disposed: closing the connection rolls the
+    /// transaction back. On the row by EvidenceId, as the API locks it; a select by Code can be answered from the Code
+    /// index alone, would lock only that index's key, and the API would not wait for it.
+    /// </summary>
+    private async Task<SqlConnection> HoldEvidenceAsync(string code)
+    {
+        var connection = new SqlConnection(factory.ConnectionStringFor("EvidenceChainTransfers"));
+        await connection.OpenAsync(Token);
+        var transaction = connection.BeginTransaction();
+        await using var command = new SqlCommand(
+            "DECLARE @id bigint = (SELECT EvidenceId FROM dbo.Evidence WHERE Code = @code); " +
+            "SELECT * FROM dbo.Evidence WITH (UPDLOCK, ROWLOCK) WHERE EvidenceId = @id;", connection, transaction);
+        command.Parameters.AddWithValue("@code", code);
+        await command.ExecuteNonQueryAsync(Token);
+        return connection;
+    }
+
 
     /// <summary>The index-th evidence that is no fixture and has no pending transfer, its holder, and a custodian to send it to.</summary>
     private static (string Code, UserSummary Holder, UserSummary Recipient) FreeEvidence(int index, UserSummary? avoidHolder = null)
