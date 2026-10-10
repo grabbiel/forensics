@@ -410,7 +410,7 @@ paths:
             type: string
         - name: cursor
           in: query
-          description: 'The nextCursor of the previous page, sent with the same filters and sort.'
+          description: 'The nextCursor or prevCursor of a page, sent with the same filters and sort.'
           schema:
             maxLength: 64
             minLength: 0
@@ -903,6 +903,7 @@ components:
       required:
         - items
         - nextCursor
+        - prevCursor
       type: object
       properties:
         items:
@@ -913,7 +914,11 @@ components:
           type:
             - 'null'
             - string
-      description: A page of the inbox; nextCursor is null on the last page.
+        prevCursor:
+          type:
+            - 'null'
+            - string
+      description: A page of the inbox. nextCursor is null on the last page and prevCursor is null on the first.
     IntegrityStatus:
       enum:
         - Unverified

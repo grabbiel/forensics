@@ -106,5 +106,5 @@ public sealed class EvidenceController(IEvidenceInboxQuery inbox, IEvidenceQueri
         Problem(statusCode: StatusCodes.Status404NotFound, detail: $"No evidence has the code '{id}'.");
 }
 
-/// <summary>A page of the inbox. nextCursor is null on the last page; prevCursor, for the page before this one, is null on the first.</summary>
+/// <summary>A page of the inbox. nextCursor is null on the last page and prevCursor is null on the first.</summary>
 public sealed record InboxPageResponse(IReadOnlyList<EvidenceSummary> Items, string? NextCursor, string? PrevCursor);
