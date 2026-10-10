@@ -3,7 +3,10 @@ import { Form, Link, Outlet, useNavigation } from 'react-router'
 import { getSession } from '../auth/session'
 import { SearchBox } from './SearchBox'
 
-/** Page frame: skip link, sticky header with the search, who is signed in and a page load's progress, main content, footer. */
+/**
+ * Page frame: skip link, sticky header with the search, who is signed in and a page load's progress, main content,
+ * footer.
+ */
 export function AppShell() {
   // Loaders send anyone signed out to /login, so a user is here whenever a page renders.
   const user = getSession()?.user

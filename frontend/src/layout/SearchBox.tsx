@@ -44,14 +44,18 @@ export function SearchBox() {
   const written = useRef(shown)
   // From sending a search from another page until a navigation lands: that search, or whatever overtook it.
   const trip = useRef(false)
+  // The key of the page the router was on when the box last navigated, until React has rendered past it.
+  const actedOn = useRef<string>(undefined)
 
   // Adopt URL changes this box didn't make (Back/Forward, "Quitar filtros", another page) and drop any pending write.
-  // That includes whatever overtook a search sent from another page, even when it shows the same `q`.
+  // Back or Forward wins even when it shows the same `q`, so it also beats a search sent from another page.
   useEffect(() => {
-    const ours = sentByBox(location, navigationType)
-    const overtaken = trip.current && !ours
+    // React catching up with the page the router was on when the box last navigated: the box's navigation is newer.
+    const caughtUp = location.key === actedOn.current
+    actedOn.current = undefined
+    if (caughtUp) return
     trip.current = false
-    if (ours || (shown === written.current && !overtaken)) return
+    if (shown === written.current && navigationType !== NavigationType.Pop) return
     written.current = shown
     window.clearTimeout(timer.current)
     setValue(urlQuery)
@@ -61,15 +65,18 @@ export function SearchBox() {
 
   /**
    * Whether a pause that ends now may search: on the inbox while the box is in step with it, or on the way to a search
-   * the box sent. A row, a link or Back the user chose wins, even one React has not rendered yet.
+   * the box sent. A row, a link, Back or Forward the user chose wins, even one React has not rendered yet.
    */
   function mayRefine() {
     const now = routerNow()
-    const heading = now.navigation.location ?? now.location
-    const action = now.navigation.location ? now.navigation.historyAction : now.historyAction
+    const pending = now.navigation.location
+    const heading = pending ?? now.location
+    const action = pending ? now.navigation.historyAction : now.historyAction
     if (heading.pathname !== INBOX) return false
     if (sentByBox(heading, action)) return true
-    return !trip.current && now.location.pathname === INBOX && shownAt(INBOX, queryAt(now.location)) === written.current
+    if (pending && action === NavigationType.Pop) return false // Back or Forward on its way, adopted when it lands
+    // In step with where the inbox is going: its own filter changes carry the box's `q`; a clear or a link drops it.
+    return !trip.current && now.location.pathname === INBOX && shownAt(INBOX, queryAt(heading)) === written.current
   }
 
   /** Cancels any pending write, then sets or clears the inbox's `q` unless this box last wrote or adopted the same. */
@@ -81,6 +88,7 @@ export function SearchBox() {
     if (!q && !toInbox) return // nothing to look for, so no reason to leave the page
     if (shownAt(INBOX, q) === written.current) return
     written.current = shownAt(INBOX, q)
+    actedOn.current = now.location.key
     if (!fromInbox) trip.current = true
     if (!toInbox) {
       // Heading anywhere but the inbox: a new search of the whole inbox, as a page Back leaves.
