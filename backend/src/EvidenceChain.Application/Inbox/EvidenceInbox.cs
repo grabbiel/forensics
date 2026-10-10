@@ -22,11 +22,7 @@ public enum SeekDirection : byte
     Backward = 1,
 }
 
-/// <summary>
-/// Where a page starts: a position and the side of it to read. One value, so a filter cannot ask for both sides at
-/// once, and a page's Next and Previous plug straight back into the filter. Built only through <see cref="After"/> and
-/// <see cref="Before"/>; the properties have no setters, so <c>with</c> cannot build one by another route.
-/// </summary>
+/// <summary>Where a page starts: a position and the side of it to read.</summary>
 public sealed record KeysetSeek
 {
     private KeysetSeek(InboxPosition from, SeekDirection direction)
@@ -87,10 +83,7 @@ public sealed record EvidenceSummary(
     DateTime? IntegrityCheckedAtUtc,
     PendingTransferSummary? PendingTransfer);
 
-/// <summary>
-/// A page of rows in display order, with the seeks to its neighbours. Next always reads forward and Previous always
-/// backward, so a caller pages by passing either one back as the filter's seek and never picks a direction.
-/// </summary>
+/// <summary>A page of rows in display order, with the seeks to its neighbours.</summary>
 /// <param name="Next">After the last row; null on the last page.</param>
 /// <param name="Previous">Before the first row; null on the first page.</param>
 public sealed record InboxPage(IReadOnlyList<EvidenceSummary> Items, KeysetSeek? Next, KeysetSeek? Previous)

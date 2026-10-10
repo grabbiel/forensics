@@ -86,7 +86,6 @@ public sealed class InboxCursorTests
         Assert.False(InboxCursor.TryDecode(new string(cursor), Filter, out _));
     }
 
-    /// <summary>The 25-byte layout issued before direction existed: version 1, ticks, id, then the filter hash.</summary>
     private static string HandEncodedV1(InboxPosition position, EvidenceInboxFilter filter)
     {
         Span<byte> bytes = stackalloc byte[25];

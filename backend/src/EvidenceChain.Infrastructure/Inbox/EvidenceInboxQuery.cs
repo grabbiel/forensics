@@ -7,8 +7,7 @@ namespace EvidenceChain.Infrastructure.Inbox;
 
 /// <summary>
 /// Keyset pages over the EvidenceInbox projection: the seek predicate is written out (LastEventAtUtc, then EvidenceId) so SQL
-/// Server can seek an index ending in (LastEventAtUtc DESC, EvidenceId DESC) instead of counting skipped rows. A backward
-/// page reads the same index the other way and is reversed in memory, so it costs what a forward page costs.
+/// Server can seek an index ending in (LastEventAtUtc DESC, EvidenceId DESC) instead of counting skipped rows.
 /// </summary>
 internal sealed class EvidenceInboxQuery(AppDbContext db) : IEvidenceInboxQuery
 {
@@ -30,21 +29,19 @@ internal sealed class EvidenceInboxQuery(AppDbContext db) : IEvidenceInboxQuery
         }
 
         var backward = filter.Seek is { Direction: SeekDirection.Backward };
-        // Display order, flipped when reading backward, so the rows nearest the seek come first.
-        var descending = filter.Sort == InboxSort.NewestFirst != backward;
+        var nearestFirstDescending = filter.Sort == InboxSort.NewestFirst != backward;
         if (filter.Seek is { } seek)
         {
             var (at, id) = (seek.From.LastEventAtUtc, seek.From.EvidenceId);
-            rows = descending
+            rows = nearestFirstDescending
                 ? rows.Where(r => r.LastEventAtUtc < at || (r.LastEventAtUtc == at && r.EvidenceId < id))
                 : rows.Where(r => r.LastEventAtUtc > at || (r.LastEventAtUtc == at && r.EvidenceId > id));
         }
 
-        rows = descending
+        rows = nearestFirstDescending
             ? rows.OrderByDescending(r => r.LastEventAtUtc).ThenByDescending(r => r.EvidenceId)
             : rows.OrderBy(r => r.LastEventAtUtc).ThenBy(r => r.EvidenceId);
 
-        // One extra row says whether another page lies beyond this one, away from the seek.
         var fetched = await rows.Take(filter.Limit + 1)
             .Select(r => new
             {
@@ -56,11 +53,9 @@ internal sealed class EvidenceInboxQuery(AppDbContext db) : IEvidenceInboxQuery
             })
             .ToListAsync(cancellationToken);
 
-        var more = fetched.Count > filter.Limit;
+        var hasBeyondSeek = fetched.Count > filter.Limit;
         var items = fetched.Take(filter.Limit).ToList();
-        // No row beyond a backward page means the start is reached. Exactly Limit rows are already the first page;
-        // fewer means rows moved, so ask again with no seek. That call is never backward.
-        if (backward && !more && items.Count < filter.Limit)
+        if (NeedsTrueFirstPage(backward, hasBeyondSeek, items.Count, filter.Limit))
             return await ListAsync(filter with { Seek = null }, cancellationToken);
         if (items.Count == 0)
             return new InboxPage([], null, null);
@@ -70,8 +65,15 @@ internal sealed class EvidenceInboxQuery(AppDbContext db) : IEvidenceInboxQuery
 
         var summaries = items.Select(r => r.Summary).ToList();
         return backward
-            ? new InboxPage(summaries, KeysetSeek.After(items[^1].Position), more ? KeysetSeek.Before(items[0].Position) : null)
-            : new InboxPage(summaries, more ? KeysetSeek.After(items[^1].Position) : null,
+            ? new InboxPage(summaries, KeysetSeek.After(items[^1].Position), hasBeyondSeek ? KeysetSeek.Before(items[0].Position) : null)
+            : new InboxPage(summaries, hasBeyondSeek ? KeysetSeek.After(items[^1].Position) : null,
                 filter.Seek is not null ? KeysetSeek.Before(items[0].Position) : null);
     }
+
+    /// <summary>
+    /// A backward read with no row beyond the seek has reached the start. Fewer than Limit rows means the listing
+    /// moved under the cursor, so the true first page must be loaded without a seek.
+    /// </summary>
+    private static bool NeedsTrueFirstPage(bool backward, bool hasBeyondSeek, int itemCount, int limit) =>
+        backward && !hasBeyondSeek && itemCount < limit;
 }

@@ -11,7 +11,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EvidenceChain.IntegrationTests;
 
-/// <summary>Previous page: the same rows come back, in the same order, after walking forward and back.</summary>
 [Collection(nameof(SqlCollection))]
 public sealed class InboxPagingTests(ApiFactory factory)
 {
@@ -43,7 +42,6 @@ public sealed class InboxPagingTests(ApiFactory factory)
         while (prev is not null)
         {
             var page = await PageAsync(client, WithCursor(query, prev));
-            // The page a backward cursor opens still points forward at the page just left.
             Assert.Equal(back[0], Codes(await PageAsync(client, WithCursor(query, page.GetProperty("nextCursor").GetString()))));
             back.Insert(0, Codes(page));
             prev = page.GetProperty("prevCursor").GetString();
@@ -94,7 +92,6 @@ public sealed class InboxPagingTests(ApiFactory factory)
         await RoundTripAsync(client, "limit=2", newest);
         await RoundTripAsync(client, "limit=2&sort=lastEventAt:asc", newest.Reverse().ToArray());
 
-        // A backward cursor aimed inside the first page (only one row before it) still answers with that first page.
         var narrow = await PageAsync(client, "limit=1");
         var second = await PageAsync(client, WithCursor("limit=1", narrow.GetProperty("nextCursor").GetString()));
         var widened = await PageAsync(client, WithCursor("limit=2", second.GetProperty("prevCursor").GetString()));
@@ -147,7 +144,6 @@ public sealed class InboxPagingTests(ApiFactory factory)
         return factory.WithWebHostBuilder(builder => builder.UseSetting("ConnectionStrings:Default", admin));
     }
 
-    /// <summary>Every page, forward, then the same pages from the last one back.</summary>
     private static async Task RoundTripAsync(HttpClient client, string query, IReadOnlyList<string> expected)
     {
         var forward = await PagesAsync(client, query);
