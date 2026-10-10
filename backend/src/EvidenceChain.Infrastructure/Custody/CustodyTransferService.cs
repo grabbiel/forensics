@@ -133,12 +133,12 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
         CancellationToken cancellationToken)
     {
         db.ChangeTracker.Clear();
-        var evidenceId = await db.CustodyTransfers.Where(t => t.TransferId == transferId).Select(t => (long?)t.EvidenceId).SingleOrDefaultAsync(cancellationToken)
-            ?? throw new InvalidOperationException($"Transfer {transferId} does not exist.");
-
+        var stored = await db.CustodyTransfers.AsNoTracking().SingleOrDefaultAsync(t => t.TransferId == transferId, cancellationToken) ?? throw new InvalidOperationException($"Transfer {transferId} does not exist");
+        if(stored.DecisionKey == key)
+            return await ReplayDecisionAsync(stored, decider, key, fingerprint, cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         // The evidence first, as requests do; then the transfer, which no other write can be changing now.
-        var evidence = await LockEvidenceAsync(evidenceId, cancellationToken);
+        var evidence = await LockEvidenceAsync(stored.EvidenceId, cancellationToken);
         var transfer = await db.CustodyTransfers.SingleAsync(t => t.TransferId == transferId, cancellationToken);
 
         // A retry of a decision already made: answer as it did, whatever version the retry names.
