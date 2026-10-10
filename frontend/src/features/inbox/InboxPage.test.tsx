@@ -26,7 +26,11 @@ const rows: EvidenceSummary[] = [
 ]
 
 /** One inbox page, the last one unless a cursor is given. */
-const page = (items: EvidenceSummary[], nextCursor: string | null = null): InboxPage => ({ items, nextCursor })
+const page = (items: EvidenceSummary[], nextCursor: string | null = null, prevCursor: string | null = null): InboxPage => ({
+  items,
+  nextCursor,
+  prevCursor,
+})
 
 const custodians = [
   { id: 4, displayName: 'Diego Salas', role: 'Custodio' },

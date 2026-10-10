@@ -33,7 +33,7 @@ export function inboxLoader({ request }: LoaderFunctionArgs) {
     const custodians = listPeople('Custodio', request.signal).catch((): Person[] => [])
     try {
       const page = await listEvidence(filter, request.signal)
-      return { rows: page.items, nextCursor: page.nextCursor, filter, custodians: await custodians }
+      return { rows: page.items, nextCursor: page.nextCursor, prevCursor: page.prevCursor, filter, custodians: await custodians }
     } catch (error) {
       if (filter.cursor && error instanceof ApiError && error.status === 400 && error.problem?.errors?.cursor) {
         url.searchParams.delete('cursor')

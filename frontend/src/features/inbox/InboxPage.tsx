@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, CaretRight, Tray } from '@phosphor-icons/react'
+import { ArrowDown, ArrowUp, CaretLeft, CaretRight, Tray } from '@phosphor-icons/react'
 import { Fragment, useRef, type ChangeEvent } from 'react'
 import { Link, useLoaderData, useNavigation } from 'react-router'
 import { EVIDENCE_TYPES, INTEGRITY_STATUSES, type EvidenceSummary, type EvidenceType } from '../../api/evidence'
@@ -21,7 +21,7 @@ const FILTER_PARAMS = ['q', 'type', 'custodianId', 'status'] as const
  * from the first page, because a cursor only continues the listing it came from.
  */
 export function InboxPage() {
-  const { rows, nextCursor, filter, custodians } = useLoaderData<typeof inboxLoader>()
+  const { rows, nextCursor, prevCursor, filter, custodians } = useLoaderData<typeof inboxLoader>()
   const loading = useNavigation().state === 'loading'
   const updateSearch = useUpdateSearch()
   // Controls reflect a click at once, not when the fetch returns.
@@ -118,7 +118,7 @@ export function InboxPage() {
       <div className="subbar">
         <p className="subbar__count" aria-hidden="true">
           {loading ? 'Cargando…' : <strong>{evidenceCount(rows.length)}</strong>}
-          {!loading && (filter.cursor || nextCursor) && <> en esta página</>}
+          {!loading && (filter.cursor || nextCursor || prevCursor) && <> en esta página</>}
           {!loading && filter.q && <> para «{filter.q}»</>}
         </p>
         {/* Says when a load starts and what it found. */}
@@ -141,11 +141,17 @@ export function InboxPage() {
         )}
       </div>
 
-      {(filter.cursor || nextCursor) && (
+      {(filter.cursor || nextCursor || prevCursor) && (
         <nav className="pager" aria-label="Páginas de la bandeja">
           {filter.cursor && (
             <button type="button" className="button button--ghost" aria-disabled={loading} onClick={() => goToPage(undefined)}>
               Primera página
+            </button>
+          )}
+          {prevCursor && (
+            <button type="button" className="button button--ghost" aria-disabled={loading} onClick={() => goToPage(prevCursor)}>
+              <CaretLeft size={16} aria-hidden="true" />
+              Página anterior
             </button>
           )}
           {nextCursor && (
