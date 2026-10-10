@@ -113,6 +113,38 @@ describe('routes and sign-in', () => {
     expect(getSession()).toBeNull()
   })
 
+  it('asks to wait after too many sign-ins, and holds every way to sign in until the wait is over', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    let throttled = true
+    const fetchMock = fakeApi((url) =>
+      url === '/api/v1/auth/token' && throttled
+        ? new Response(JSON.stringify({ status: 429 }), { status: 429, headers: { 'Content-Type': 'application/problem+json', 'Retry-After': '30' } })
+        : undefined,
+    )
+    const signIns = () => fetchMock.mock.calls.filter(([url]) => String(url) === '/api/v1/auth/token').length
+    const router = renderAt('/login')
+
+    const persona = await screen.findByRole('button', { name: /Lucía Ferrer/ })
+    await userEvent.click(persona)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Demasiados intentos de inicio de sesión seguidos. Espera 30 segundos antes de volver a intentarlo.')
+    expect(persona).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('button', { name: 'Entrar' })).toHaveAttribute('aria-disabled', 'true')
+    await userEvent.click(persona)
+    await userEvent.type(screen.getByLabelText('Otra persona del equipo'), 'nuria.paredes{Enter}')
+    expect(signIns()).toBe(1)
+
+    throttled = false
+    await act(async () => vi.advanceTimersByTime(30_000))
+    expect(persona).toHaveAttribute('aria-disabled', 'false')
+    expect(screen.getByText('Ya puedes volver a intentarlo.')).toBeInTheDocument() // said politely, outside the alert
+    await userEvent.click(persona)
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    expect(getSession()?.user.role).toBe('Investigador')
+  })
+
   it('forgets a refused token and asks to sign in again, keeping the way back', async () => {
     signInAs('Supervisor')
     fakeApi((url) => (url.startsWith(`/api/v1/evidence/${detail.code}`) ? json(401, { status: 401 }, 'application/problem+json') : undefined))
@@ -205,9 +237,9 @@ describe('resource routes', () => {
     expect(router.state.location.search).toBe(`?redirectTo=${encodeURIComponent(`/evidence/${detail.code}`)}`)
   })
 
-  it('re-reads the evidence after every answer to a write, never re-running a verification', async () => {
+  it('re-reads the evidence after every answer to a write but a 429, never re-running a verification', async () => {
     signInAs('Investigador')
-    const answers = [201, 409, 0, 422, 500]
+    const answers = [201, 409, 0, 422, 500, 429]
     const fetchMock = fakeApi((url) => {
       if (url.endsWith('/chain/verify')) return json(200, { code: detail.code, valid: true, verifiedThroughSeq: 1, eventCount: 1, checkedAtUtc: '2026-10-09T00:00:00Z', firstInvalid: null })
       if (url !== '/api/v1/custody-transfers') return undefined
@@ -222,12 +254,13 @@ describe('resource routes', () => {
     await waitFor(() => expect(calls('/chain/verify')).toBe(1))
     expect(calls('')).toBe(1)
 
-    for (const [outcome, reads] of [['done', 2], ['refused', 3], ['unknown', 4], ['refused', 5], ['unknown', 6]] as const) {
+    for (const [outcome, reads] of [['done', 2], ['refused', 3], ['unknown', 4], ['refused', 5], ['unknown', 6], ['throttled', 6]] as const) {
       await userEvent.click(screen.getByRole('button', { name: 'enviar' }))
       await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(outcome))
       await waitFor(() => expect(calls('')).toBe(reads))
       expect(calls('/chain/verify')).toBe(1)
       await act(async () => {}) // let any revalidation settle before the next write
     }
+    expect(calls('')).toBe(6) // still, once the throttled write has settled
   })
 })

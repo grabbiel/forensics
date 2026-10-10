@@ -307,6 +307,40 @@ describe('TransferPanel', () => {
     expect(await screen.findByText(text)).toBeInTheDocument()
   })
 
+  it('holds a throttled acceptance until the wait is over, then retries it with the same key', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    signInAsUser('Custodio', NURIA)
+    const server: Server = { detail: withPending, chain: [] }
+    const fetchMock = stubApi(server, async () =>
+      writes(fetchMock).length === 1
+        ? new Response(JSON.stringify({ status: 429 }), { status: 429, headers: { 'Content-Type': 'application/problem+json', 'Retry-After': '30' } })
+        : json(200, transferBody({ status: 'Accepted', decidedBy: nuria, etag: '"00000000000007d2"' })),
+    )
+    await open()
+
+    const accept = screen.getByRole('button', { name: 'Aceptar custodia' })
+    await userEvent.click(accept)
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('No se pudo aceptar: el servidor recibió demasiadas operaciones seguidas y no guardó nada. Espera 30 segundos antes de volver a intentarlo.')
+    expect(alert).toHaveFocus()
+    expect(accept).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('button', { name: 'Rechazar' })).toHaveAttribute('aria-disabled', 'true')
+    await userEvent.click(accept)
+    expect(writes(fetchMock)).toHaveLength(1)
+
+    const retry = within(alert).getByRole('button', { name: 'Reintentar' })
+    await act(async () => vi.advanceTimersByTime(30_000))
+    expect(retry).toHaveAttribute('aria-disabled', 'false')
+    expect(accept).toHaveAttribute('aria-disabled', 'false')
+    expect(progress()).toHaveTextContent('Ya puedes volver a intentarlo.')
+    server.detail = { ...base, currentCustodian: nuria }
+    await userEvent.click(retry)
+
+    expect(await screen.findByText(`Aceptaste la custodia de ${code}.`)).toBeInTheDocument()
+    const [first, second] = writes(fetchMock)
+    expect(header(second[1], 'Idempotency-Key')).toBe(header(first[1], 'Idempotency-Key'))
+  })
+
   it('offers the same key again for an unanswered acceptance the chain does not show', async () => {
     signInAsUser('Custodio', NURIA)
     const fetchMock = stubApi({ detail: withPending, chain: [] }, async () => problem(409, { type: 'urn:evidence-chain:problem:idempotency-in-flight' }))

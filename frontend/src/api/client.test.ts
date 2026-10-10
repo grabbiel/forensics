@@ -32,6 +32,20 @@ describe('api client', () => {
     expect((gateway as ApiError).problem).toBeUndefined()
   })
 
+  it('reads a 429’s Retry-After in seconds, kept within 1–120, and assumes 5 when it is missing or unreadable', async () => {
+    const waitFor = async (status: number, headers: Record<string, string>) => {
+      vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => reply(status, { status }, 'application/problem+json', headers)))
+      return ((await getJson('/x').catch((error: unknown) => error)) as ApiError).retryAfterSeconds
+    }
+
+    expect(await waitFor(429, { 'Retry-After': '7' })).toBe(7)
+    expect(await waitFor(429, { 'Retry-After': '0' })).toBe(1)
+    expect(await waitFor(429, { 'Retry-After': '86400' })).toBe(120)
+    expect(await waitFor(429, {})).toBe(5)
+    expect(await waitFor(429, { 'Retry-After': 'Fri, 09 Oct 2026 18:00:00 GMT' })).toBe(5)
+    expect(await waitFor(503, { 'Retry-After': '7' })).toBeUndefined()
+  })
+
   it('gives up on a read that hangs, failing with a TimeoutError', async () => {
     const clock = new AbortController()
     const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(clock.signal)

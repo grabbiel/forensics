@@ -16,9 +16,11 @@ const EVIDENCE_NOT_FOUND = { title: 'Evidencia no encontrada', detail: 'No exist
 /**
  * The router revalidates loaders only after successful actions. On the evidence page any answer to a write says
  * something about its current state (a 409 or 400 that it moved on, an unknown outcome that it may have), so the page
- * reads itself again after every write.
+ * reads itself again after every write. Except a 429: the server turned the write away before running it, and a read
+ * now would be one more request while it asks for fewer.
  */
 function revalidateEvidence({ actionStatus, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
+  if (actionStatus === 429) return false
   return actionStatus !== undefined || defaultShouldRevalidate
 }
 

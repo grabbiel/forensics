@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
@@ -180,6 +180,34 @@ describe('EvidencePage', () => {
     await waitFor(() => expect(verifyStatus()).toHaveTextContent('Sin conexión: no se pudo verificar.'))
     expect(document.getElementById('event-2')).toHaveTextContent('Primer evento inválido')
     expect(screen.getAllByText('Alterada').length).toBeGreaterThan(0)
+  })
+
+  it('asks to wait after too many verifications, holding the button until the wait is over', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    let throttled = true
+    const fetchMock = stubApi(async () =>
+      throttled
+        ? new Response(JSON.stringify({ status: 429 }), { status: 429, headers: { 'Content-Type': 'application/problem+json', 'Retry-After': '30' } })
+        : json(200, report({})),
+    )
+    const verifications = () => fetchMock.mock.calls.filter(([input]) => String(input).endsWith('/chain/verify')).length
+    await open()
+    const button = screen.getByRole('button', { name: 'Verificar cadena' })
+
+    await userEvent.click(button)
+
+    await waitFor(() => expect(verifyStatus()).toHaveTextContent('Demasiadas verificaciones seguidas. Espera 30 segundos antes de volver a intentarlo.'))
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    await userEvent.click(button)
+    expect(verifications()).toBe(1)
+
+    throttled = false
+    await act(async () => vi.advanceTimersByTime(30_000))
+    expect(button).toHaveAttribute('aria-disabled', 'false')
+    expect(verifyStatus()).toHaveTextContent('Demasiadas verificaciones seguidas. Ya puedes volver a intentarlo.')
+    await userEvent.click(button)
+
+    await waitFor(() => expect(verifyStatus()).toHaveTextContent('Cadena íntegra'))
   })
 
   it('explains a verification that got no answer, and the page stays', async () => {

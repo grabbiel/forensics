@@ -7,6 +7,7 @@ import type { Person } from '../../api/people'
 import type { TransferResource } from '../../api/transfers'
 import type { SessionUser } from '../../auth/session'
 import { formatUtcDateTime } from '../../lib/format'
+import { READY_SENTENCE, useWaited, waitSentence } from '../../lib/useWaited'
 import { clearIntent, getIntent, intentScope, startIntent, type IntentKind, type PendingIntent } from './pendingIntent'
 import { RejectDialog, RequestDialog, type RequestFields } from './TransferDialogs'
 import { PROBLEM, type WriteResult } from './transferActions'
@@ -22,6 +23,8 @@ interface Notice {
   state?: { transfer: TransferView; status: TransferStatus; actedBy?: PersonRef }
   /** The write a retry resends with the same key, or that can be discarded. */
   retry?: IntentKind
+  /** After a 429: the seconds before the retry can go. */
+  wait?: number
   /** True when it answers something the user just did; a notice restored on load does not take focus. */
   focus: boolean
 }
@@ -63,6 +66,9 @@ export function TransferPanel({
       (request.state === 'idle' && !request.data ? reconcileRequest(loaded, undefined, false) : null) ??
       (decision.state === 'idle' && !decision.data ? reconcileDecision(loaded, undefined, false) : null),
   )
+  // After a 429, any write before the server's wait is over would only be turned away again.
+  const waited = useWaited(notice?.wait, notice)
+  const throttledRequest = notice?.wait !== undefined && notice.retry === 'request'
   const noticeRef = useRef<HTMLDivElement>(null)
   const titleRef = useRef<HTMLHeadingElement>(null)
   // The transfer a decision was sent for: once a 409 says it was decided, the page no longer loads it.
@@ -102,12 +108,14 @@ export function TransferPanel({
   // Each answer becomes a notice once the page has re-read itself (the fetcher is idle), and moves focus there.
   useSettled(request, (result) => {
     if (result.outcome === 'unknown') return setNotice(reconcileRequest(loaded, result, true))
+    if (result.outcome === 'throttled') return setNotice(throttled(result))
     if (result.outcome === 'done') return setNotice({ kind: 'success', focus: true, text: requestDone(result.transfer, result.replayed) })
     setNotice(refusal(result, user, nameOf, decidedOn.current))
   })
 
   useSettled(decision, (result) => {
     if (result.outcome === 'unknown') return setNotice(reconcileDecision(loaded, result, true))
+    if (result.outcome === 'throttled') return setNotice(throttled(result))
     if (result.outcome === 'done') {
       const text =
         result.transfer.status === 'Accepted'
@@ -136,7 +144,9 @@ export function TransferPanel({
       ? `Enviando ${deciding === 'reject' ? 'el rechazo' : 'la aceptación'}…`
       : sendingRequest
         ? 'Enviando la solicitud…'
-        : ''
+        : notice?.wait !== undefined && waited
+          ? READY_SENTENCE // politely, instead of changing the alert that asked for the wait
+          : ''
 
   return (
     <section className="transfers" aria-labelledby="transfers-title">
@@ -154,7 +164,8 @@ export function TransferPanel({
           <p>{notice.text}</p>
           {notice.retry && (
             <div className="notice__actions">
-              <button type="button" className="button button--ghost" onClick={() => retry(notice.retry!)}>
+              {/* aria-disabled, not disabled, so focus can rest on it while the wait runs. */}
+              <button type="button" className="button button--ghost" aria-disabled={!waited} onClick={() => waited && retry(notice.retry!)}>
                 <ArrowClockwise size={16} aria-hidden="true" />
                 Reintentar
               </button>
@@ -184,12 +195,12 @@ export function TransferPanel({
                 <button
                   type="button"
                   className="button"
-                  aria-disabled={deciding !== undefined}
-                  onClick={() => deciding === undefined && decide('accept', pending)}
+                  aria-disabled={deciding !== undefined || !waited}
+                  onClick={() => deciding === undefined && waited && decide('accept', pending)}
                 >
                   Aceptar custodia
                 </button>
-                <RejectDialog busy={deciding !== undefined} fallbackFocus={headingRef} onSubmit={(reason) => decide('reject', pending, reason)} />
+                <RejectDialog busy={deciding !== undefined || !waited} fallbackFocus={headingRef} onSubmit={(reason) => decide('reject', pending, reason)} />
               </div>
             ) : undefined
           }
@@ -214,7 +225,8 @@ export function TransferPanel({
           custodians={custodians}
           currentCustodianId={detail.currentCustodian.id}
           unresolved={requestIntent ? { toCustodianId: requestIntent.fields.toCustodianId, reason: requestIntent.fields.reason } : undefined}
-          busy={request.state !== 'idle'}
+          throttled={throttledRequest}
+          busy={request.state !== 'idle' || !waited}
           fallbackFocus={headingRef}
           onSubmit={requestTransfer}
         />
@@ -350,6 +362,17 @@ function NoticeIcon({ kind }: { kind: Notice['kind'] }) {
   return <WarningOctagon size={18} weight="bold" aria-hidden="true" />
 }
 
+/** How a failed write's notice starts. */
+function failed(write: WriteResult['write']): string {
+  return `No se pudo ${write === 'request' ? 'solicitar la transferencia' : write === 'accept' ? 'aceptar' : 'rechazar'}`
+}
+
+/** A write turned away before it ran: nothing was saved, and the same key can go again once the wait is over. */
+function throttled({ write, retryAfterSeconds }: Extract<WriteResult, { outcome: 'throttled' }>): Notice {
+  const text = `${failed(write)}: el servidor recibió demasiadas operaciones seguidas y no guardó nada. ${waitSentence(retryAfterSeconds)}`
+  return { kind: 'error', focus: true, text, retry: write === 'request' ? 'request' : 'decision', wait: retryAfterSeconds }
+}
+
 /** A refused write in the user's terms. A 409 says who did what and when, from the state the server sent back. */
 function refusal(
   { write, status, problem }: Extract<WriteResult, { outcome: 'refused' }>,
@@ -357,7 +380,7 @@ function refusal(
   nameOf: (id: number) => string,
   decidedOn: TransferView | null,
 ): Notice {
-  const fail = `No se pudo ${write === 'request' ? 'solicitar la transferencia' : write === 'accept' ? 'aceptar' : 'rechazar'}`
+  const fail = failed(write)
   const current = problem?.currentState as { transferId: number; status: TransferStatus; toCustodianId: number } | undefined
   if (status === 409 && current) {
     const actedBy = problem?.actedBy as PersonRef | undefined

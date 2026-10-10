@@ -1,10 +1,12 @@
 import { ArrowLeft, ArrowsLeftRight, CheckCircle, ShieldCheck, Warning, WarningOctagon } from '@phosphor-icons/react'
 import { Fragment, useRef, useState, type MouseEvent } from 'react'
 import { Link, useFetcher, useLoaderData } from 'react-router'
+import { DEFAULT_RETRY_AFTER_SECONDS } from '../../api/client'
 import type { Anomaly, ChainEvent, EvidenceDetail, VerificationReport } from '../../api/evidence'
 import { IntegrityBadge } from '../../components/IntegrityBadge'
 import { TypeBadge } from '../../components/TypeBadge'
 import { ANOMALY_LABELS, describeEvent, formatBytes, formatUtcDateTime, SEVERITY_LABELS } from '../../lib/format'
+import { READY_SENTENCE, useWaited, waitSentence } from '../../lib/useWaited'
 import { TransferPanel } from '../transfers/TransferPanel'
 import type { evidenceLoader, VerifyResult } from './evidenceLoader'
 
@@ -14,6 +16,9 @@ export function EvidencePage() {
   const headingRef = useRef<HTMLHeadingElement>(null)
   const verify = useFetcher<VerifyResult>()
   const verifying = verify.state !== 'idle'
+  // After a 429, verifying again before the server's wait is over would only be refused again.
+  const waited = useWaited(verify.data?.ok === false ? verify.data.retryAfterSeconds : undefined, verify.data)
+  const held = verifying || !waited
   // The last report survives a later attempt that fails to reach the API; the code check drops another evidence's.
   const [lastReport, setLastReport] = useState<VerificationReport>()
   if (verify.data?.ok && verify.data.report !== lastReport) setLastReport(verify.data.report)
@@ -37,17 +42,17 @@ export function EvidencePage() {
       <p className="evidence__description">{detail.description}</p>
 
       <div className="verify">
-        {/* aria-disabled, not disabled, so focus stays on the button while it runs. */}
+        {/* aria-disabled, not disabled, so focus stays on the button while it runs or waits. */}
         <button
           type="button"
           className="button button--ghost"
-          aria-disabled={verifying}
-          onClick={() => verifying || verify.load(`/evidence/${encodeURIComponent(detail.code)}/verify`)}
+          aria-disabled={held}
+          onClick={() => held || verify.load(`/evidence/${encodeURIComponent(detail.code)}/verify`)}
         >
           <ShieldCheck size={18} aria-hidden="true" />
           Verificar cadena
         </button>
-        <VerifyOutcome result={verify.data} verifying={verifying} events={chain.events} />
+        <VerifyOutcome result={verify.data} verifying={verifying} waited={waited} events={chain.events} />
       </div>
 
       {detail.anomalies.length > 0 && <Anomalies anomalies={detail.anomalies} />}
@@ -62,14 +67,18 @@ export function EvidencePage() {
  * What the verification found, announced politely. The region is always in the page so the first result is read
  * too; the first invalid event links to its place in the timeline.
  */
-function VerifyOutcome({ result, verifying, events }: { result: VerifyResult | undefined; verifying: boolean; events: ChainEvent[] }) {
+function VerifyOutcome({ result, verifying, waited, events }: { result: VerifyResult | undefined; verifying: boolean; waited: boolean; events: ChainEvent[] }) {
   return (
     <div className="verify__outcome" role="status">
       {verifying ? (
         'Verificando la cadena…'
       ) : !result ? null : !result.ok ? (
         <span className="verify__error">
-          {result.status === 0 ? 'Sin conexión: no se pudo verificar. Inténtalo de nuevo.' : `No se pudo verificar (código ${result.status}).`}
+          {result.status === 0
+            ? 'Sin conexión: no se pudo verificar. Inténtalo de nuevo.'
+            : result.status === 429
+              ? `Demasiadas verificaciones seguidas. ${waited ? READY_SENTENCE : waitSentence(result.retryAfterSeconds ?? DEFAULT_RETRY_AFTER_SECONDS)}`
+              : `No se pudo verificar (código ${result.status}).`}
         </span>
       ) : result.report.valid ? (
         <span className="verify__valid">
