@@ -203,7 +203,7 @@ public sealed class RateLimitingTests(ApiFactory factory)
                 _holding.TrySetResult();
                 await _released.Task.WaitAsync(cancellationToken);
             }
-            return new InboxPage([], null);
+            return new InboxPage([], null, null);
         }
     }
 

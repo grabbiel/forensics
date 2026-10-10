@@ -28,7 +28,7 @@ public sealed class EvidenceController(IEvidenceInboxQuery inbox, IEvidenceQueri
     /// <param name="custodianId">Only evidence this user holds now.</param>
     /// <param name="status">Only evidence whose last verification found it Unverified, Valid or Invalid.</param>
     /// <param name="sort">lastEventAt:desc (default) or lastEventAt:asc.</param>
-    /// <param name="cursor">The nextCursor of the previous page, sent with the same filters and sort.</param>
+    /// <param name="cursor">The nextCursor or prevCursor of a page, sent with the same filters and sort.</param>
     /// <param name="limit">Rows per page, 1 to 50.</param>
     /// <param name="cancellationToken">Aborted when the client cancels.</param>
     [HttpGet]
@@ -52,8 +52,8 @@ public sealed class EvidenceController(IEvidenceInboxQuery inbox, IEvidenceQueri
             sort == OldestFirst ? InboxSort.OldestFirst : InboxSort.NewestFirst, limit);
         if (cursor is not null)
         {
-            if (InboxCursor.TryDecode(cursor, filter, out var after))
-                filter = filter with { After = after };
+            if (InboxCursor.TryDecode(cursor, filter, out var seek))
+                filter = filter with { Seek = seek };
             else
                 ModelState.AddModelError(nameof(cursor), "Not a cursor this API issued for these filters and sort; start again without it.");
         }
@@ -62,7 +62,9 @@ public sealed class EvidenceController(IEvidenceInboxQuery inbox, IEvidenceQueri
             return ValidationProblem(ModelState);
 
         var page = await inbox.ListAsync(filter, cancellationToken);
-        return Ok(new InboxPageResponse(page.Items, page.Next is { } next ? InboxCursor.Encode(next, filter) : null));
+        return Ok(new InboxPageResponse(page.Items, Cursor(page.Next), Cursor(page.Previous)));
+
+        string? Cursor(KeysetSeek? seek) => seek is null ? null : InboxCursor.Encode(seek, filter);
     }
 
     /// <summary>One evidence: content, custodians, integrity, the transfer waiting on its recipient and any anomalies.</summary>
@@ -104,5 +106,5 @@ public sealed class EvidenceController(IEvidenceInboxQuery inbox, IEvidenceQueri
         Problem(statusCode: StatusCodes.Status404NotFound, detail: $"No evidence has the code '{id}'.");
 }
 
-/// <summary>A page of the inbox; nextCursor is null on the last page.</summary>
-public sealed record InboxPageResponse(IReadOnlyList<EvidenceSummary> Items, string? NextCursor);
+/// <summary>A page of the inbox. nextCursor is null on the last page and prevCursor is null on the first.</summary>
+public sealed record InboxPageResponse(IReadOnlyList<EvidenceSummary> Items, string? NextCursor, string? PrevCursor);

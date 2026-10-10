@@ -31,6 +31,8 @@ export interface InboxPage {
   items: EvidenceSummary[]
   /** Opaque; continues this same listing only. Null on the last page. */
   nextCursor: string | null
+  /** Opaque; the page before this one, for the same listing. Null on the first page. */
+  prevCursor: string | null
 }
 
 export interface EvidenceFilter {

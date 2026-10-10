@@ -127,7 +127,7 @@ describe('a slow answer for an earlier filter', () => {
           await logAnswer
         }
         handled.push(request.signal.aborted ? `${type} answered after the client gave up` : type)
-        return HttpResponse.json({ items: rows[type], nextCursor: null })
+        return HttpResponse.json({ items: rows[type], nextCursor: null, prevCursor: null })
       }),
     )
     const { router } = renderAt('/')
@@ -160,7 +160,7 @@ describe('a search typed on an evidence page', () => {
       http.get('/api/v1/evidence', async ({ request }) => {
         searched.push(new URL(request.url).searchParams.get('q'))
         await answered
-        return HttpResponse.json({ items: [summary(code, 'Log del firewall')], nextCursor: null })
+        return HttpResponse.json({ items: [summary(code, 'Log del firewall')], nextCursor: null, prevCursor: null })
       }),
     )
     const { router, view } = await openEvidence()
@@ -396,5 +396,44 @@ describe('the transfer dialogs from the keyboard', () => {
     await userEvent.keyboard('{Escape}')
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(opener).toHaveFocus()
+  })
+})
+
+describe('paging the inbox', () => {
+  it('shows the next page, the one after that, then the page before', async () => {
+    signInAs('Investigador')
+    const pages = [
+      [summary('LOG202610060001', 'Uno'), summary('LOG202610060002', 'Dos')],
+      [summary('LOG202610060003', 'Tres'), summary('LOG202610060004', 'Cuatro')],
+      [summary('LOG202610060005', 'Cinco'), summary('LOG202610060006', 'Seis')],
+    ]
+    server.use(
+      http.get('/api/v1/people', () => HttpResponse.json(custodians)),
+      http.get('/api/v1/evidence', ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get('cursor')
+        const index = cursor === 'p2' ? 1 : cursor === 'p3' ? 2 : 0
+        return HttpResponse.json({
+          items: pages[index],
+          nextCursor: ['p2', 'p3', null][index],
+          prevCursor: [null, 'p1', 'p2'][index],
+        })
+      }),
+    )
+    const { router } = renderAt('/')
+    await screen.findByRole('table')
+    expect(shownCodes()).toEqual(['LOG202610060001', 'LOG202610060002'])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Página siguiente' }))
+    await waitFor(() => expect(shownCodes()).toEqual(['LOG202610060003', 'LOG202610060004']))
+    expect(router.state.location.search).toBe('?cursor=p2')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Página siguiente' }))
+    await waitFor(() => expect(shownCodes()).toEqual(['LOG202610060005', 'LOG202610060006']))
+    expect(router.state.location.search).toBe('?cursor=p3')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Página anterior' }))
+    await waitFor(() => expect(shownCodes()).toEqual(['LOG202610060003', 'LOG202610060004']))
+    expect(router.state.location.search).toBe('?cursor=p2')
+    expect(screen.getByRole('heading', { name: 'Bandeja de evidencias' })).toHaveFocus()
   })
 })

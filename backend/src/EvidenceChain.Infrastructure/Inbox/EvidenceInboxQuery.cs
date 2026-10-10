@@ -28,21 +28,21 @@ internal sealed class EvidenceInboxQuery(AppDbContext db) : IEvidenceInboxQuery
             rows = rows.Where(r => r.Code.StartsWith(codePrefix) || r.Description.Contains(text));
         }
 
-        var newestFirst = filter.Sort == InboxSort.NewestFirst;
-        if (filter.After is { } after)
+        var backward = filter.Seek is { Direction: SeekDirection.Backward };
+        var nearestFirstDescending = filter.Sort == InboxSort.NewestFirst != backward;
+        if (filter.Seek is { } seek)
         {
-            var (at, id) = (after.LastEventAtUtc, after.EvidenceId);
-            rows = newestFirst
+            var (at, id) = (seek.From.LastEventAtUtc, seek.From.EvidenceId);
+            rows = nearestFirstDescending
                 ? rows.Where(r => r.LastEventAtUtc < at || (r.LastEventAtUtc == at && r.EvidenceId < id))
                 : rows.Where(r => r.LastEventAtUtc > at || (r.LastEventAtUtc == at && r.EvidenceId > id));
         }
 
-        rows = newestFirst
+        rows = nearestFirstDescending
             ? rows.OrderByDescending(r => r.LastEventAtUtc).ThenByDescending(r => r.EvidenceId)
             : rows.OrderBy(r => r.LastEventAtUtc).ThenBy(r => r.EvidenceId);
 
-        // One extra row says whether another page follows.
-        var page = await rows.Take(filter.Limit + 1)
+        var fetched = await rows.Take(filter.Limit + 1)
             .Select(r => new
             {
                 Position = new InboxPosition(r.LastEventAtUtc, r.EvidenceId),
@@ -53,7 +53,27 @@ internal sealed class EvidenceInboxQuery(AppDbContext db) : IEvidenceInboxQuery
             })
             .ToListAsync(cancellationToken);
 
-        var items = page.Take(filter.Limit).ToList();
-        return new InboxPage(items.Select(r => r.Summary).ToList(), page.Count > filter.Limit ? items[^1].Position : null);
+        var hasBeyondSeek = fetched.Count > filter.Limit;
+        var items = fetched.Take(filter.Limit).ToList();
+        if (NeedsTrueFirstPage(backward, hasBeyondSeek, items.Count, filter.Limit))
+            return await ListAsync(filter with { Seek = null }, cancellationToken);
+        if (items.Count == 0)
+            return new InboxPage([], null, null);
+
+        if (backward)
+            items.Reverse();
+
+        var summaries = items.Select(r => r.Summary).ToList();
+        return backward
+            ? new InboxPage(summaries, KeysetSeek.After(items[^1].Position), hasBeyondSeek ? KeysetSeek.Before(items[0].Position) : null)
+            : new InboxPage(summaries, hasBeyondSeek ? KeysetSeek.After(items[^1].Position) : null,
+                filter.Seek is not null ? KeysetSeek.Before(items[0].Position) : null);
     }
+
+    /// <summary>
+    /// A backward read with no row beyond the seek has reached the start. Fewer than Limit rows means the listing
+    /// moved under the cursor, so the true first page must be loaded without a seek.
+    /// </summary>
+    private static bool NeedsTrueFirstPage(bool backward, bool hasBeyondSeek, int itemCount, int limit) =>
+        backward && !hasBeyondSeek && itemCount < limit;
 }

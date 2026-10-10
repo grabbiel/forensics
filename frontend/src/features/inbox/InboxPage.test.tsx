@@ -26,7 +26,11 @@ const rows: EvidenceSummary[] = [
 ]
 
 /** One inbox page, the last one unless a cursor is given. */
-const page = (items: EvidenceSummary[], nextCursor: string | null = null): InboxPage => ({ items, nextCursor })
+const page = (items: EvidenceSummary[], nextCursor: string | null = null, prevCursor: string | null = null): InboxPage => ({
+  items,
+  nextCursor,
+  prevCursor,
+})
 
 const custodians = [
   { id: 4, displayName: 'Diego Salas', role: 'Custodio' },
@@ -257,6 +261,7 @@ describe('InboxPage', () => {
     const router = renderAt('/?type=EML')
     await screen.findByRole('table')
     expect(screen.queryByRole('button', { name: 'Primera página' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Página anterior' })).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Página siguiente' }))
     await waitFor(() => expect(router.state.location.search).toBe('?type=EML&cursor=next-1'))
@@ -267,9 +272,34 @@ describe('InboxPage', () => {
     await waitFor(() => expect(router.state.location.search).toBe('?type=EML'))
   })
 
+  it('pages back with prevCursor and moves focus to the heading', async () => {
+    const fetchMock = stubFetch(200, page(rows, 'next-1', 'prev-1'))
+    const router = renderAt('/?type=EML&cursor=page-2')
+    await screen.findByRole('table')
+    const pager = screen.getByRole('navigation', { name: 'Páginas de la bandeja' }).textContent ?? ''
+    expect(pager.indexOf('Primera página')).toBeLessThan(pager.indexOf('Página anterior'))
+    expect(pager.indexOf('Página anterior')).toBeLessThan(pager.indexOf('Página siguiente'))
+    expect(screen.getByText(/en esta página/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Página anterior' }))
+    await waitFor(() => expect(router.state.location.search).toBe('?type=EML&cursor=prev-1'))
+    expect(inboxCalls(fetchMock).at(-1)).toBe('/api/v1/evidence?type=EML&cursor=prev-1')
+    expect(screen.getByRole('heading', { name: 'Bandeja de evidencias' })).toHaveFocus()
+  })
+
+  it('still calls the rows this page when the only other page is the previous one', async () => {
+    stubFetch(200, page(rows, null, 'prev-1'))
+    renderAt('/?cursor=last')
+
+    await screen.findByRole('table')
+    expect(screen.getByText(/en esta página/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Página anterior' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Página siguiente' })).not.toBeInTheDocument()
+  })
+
   it('says it is loading and holds the pager while a load runs, since its cursor belongs to the old listing', async () => {
     let release: (response: Response) => void = () => {}
-    const fetchMock = vi.fn<typeof fetch>(withPeople(async () => reply(200, page(rows, 'next-1'))))
+    const fetchMock = vi.fn<typeof fetch>(withPeople(async () => reply(200, page(rows, 'next-1', 'prev-1'))))
     vi.stubGlobal('fetch', fetchMock)
     const router = renderAt()
     await screen.findByRole('table')
@@ -278,7 +308,9 @@ describe('InboxPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'CSV' }))
     expect(screen.getByRole('status')).toHaveTextContent('Cargando evidencias…')
     const next = screen.getByRole('button', { name: 'Página siguiente' })
+    const previous = screen.getByRole('button', { name: 'Página anterior' })
     expect(next).toHaveAttribute('aria-disabled', 'true')
+    expect(previous).toHaveAttribute('aria-disabled', 'true')
     await userEvent.click(next)
 
     release(reply(200, page([])))
