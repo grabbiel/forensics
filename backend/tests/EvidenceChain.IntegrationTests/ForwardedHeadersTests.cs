@@ -25,7 +25,8 @@ public sealed class ForwardedHeadersTests(ApiFactory factory)
         });
 
     /// <summary>A request as it reaches Kestrel from `peer`; returns the context the API worked with.</summary>
-    private static Task<HttpContext> SendAsync(WebApplicationFactory<Program> api, IPAddress peer, string forwardedFor, string? forwardedProto = null) =>
+    private static Task<HttpContext> SendAsync(
+        WebApplicationFactory<Program> api, IPAddress peer, string forwardedFor, string? forwardedProto = null, string? originalFor = null) =>
         api.Server.SendAsync(context =>
         {
             context.Request.Method = HttpMethods.Get;
@@ -34,6 +35,8 @@ public sealed class ForwardedHeadersTests(ApiFactory factory)
             context.Request.Headers["X-Forwarded-For"] = forwardedFor;
             if (forwardedProto is not null)
                 context.Request.Headers["X-Forwarded-Proto"] = forwardedProto;
+            if (originalFor is not null)
+                context.Request.Headers["X-Original-For"] = originalFor;
         });
 
     [Fact]
@@ -84,17 +87,31 @@ public sealed class ForwardedHeadersTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task Forwarding_from_an_untrusted_peer_is_reported_once_naming_the_peer()
+    public async Task A_proxy_outside_the_trusted_networks_is_reported_once_by_its_address()
     {
         var warnings = new Warnings();
         await using var api = BehindProxies(warnings);
 
-        await SendAsync(api, Proxy, Caller.ToString()); // trusted: nothing to report
-        await SendAsync(api, IPAddress.Parse("203.0.113.9"), Caller.ToString());
-        await SendAsync(api, IPAddress.Parse("203.0.113.10"), Caller.ToString());
+        await SendAsync(api, Proxy, Caller.ToString());       // trusted: nothing to report
+        await SendAsync(api, Proxy, "not an address");        // trusted, if garbled: still nothing to report
+        await SendAsync(api, IPAddress.Parse("::ffff:172.20.0.5"), Caller.ToString(), originalFor: "10.1.2.3:1"); // a header cannot hide it
+        await SendAsync(api, IPAddress.Parse("172.20.0.6"), Caller.ToString());
 
         var warning = Assert.Single(warnings.Messages);
-        Assert.Contains("203.0.113.9", warning);
+        Assert.Contains("came from 172.20.0.5", warning);
+    }
+
+    [Fact]
+    public async Task A_public_peer_is_reported_without_its_address()
+    {
+        var warnings = new Warnings();
+        await using var api = BehindProxies(warnings);
+
+        await SendAsync(api, IPAddress.Parse("203.0.113.9"), Caller.ToString());
+
+        var warning = Assert.Single(warnings.Messages);
+        Assert.Contains("came from a public address", warning);
+        Assert.DoesNotContain("203.0.113.9", warning);
     }
 
     [Theory]

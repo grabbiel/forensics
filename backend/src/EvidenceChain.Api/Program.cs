@@ -67,7 +67,7 @@ var app = builder.Build();
 
 // First, so everything after (rate limits, telemetry, Location URLs) sees the caller, not the proxy.
 if (proxyNetworks.Length > 0)
-    app.UseTrustedForwardedHeaders();
+    app.UseTrustedForwardedHeaders(proxyNetworks);
 app.UseExceptionHandler(); // unhandled errors → application/problem+json
 app.UseStatusCodePages();  // empty 4xx/5xx → application/problem+json
 app.Use(NoStoreForApi);

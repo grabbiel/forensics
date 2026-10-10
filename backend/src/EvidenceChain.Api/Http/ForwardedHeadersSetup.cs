@@ -50,23 +50,36 @@ public static class ForwardedHeadersSetup
     }
 
     /// <summary>
-    /// Reads X-Forwarded-* from the trusted proxies, and warns once when a request carried it from a peer outside the
-    /// ranges: every caller then looks like that proxy, and limits per address would lump them all together.
+    /// Reads X-Forwarded-* from the trusted proxies, and warns once when a peer outside the ranges sends it: every caller
+    /// then looks like that proxy, and limits per address would lump them all together. The peer is judged before the
+    /// middleware runs, so no header a caller sends can hide it.
     /// </summary>
-    public static IApplicationBuilder UseTrustedForwardedHeaders(this IApplicationBuilder app)
+    public static IApplicationBuilder UseTrustedForwardedHeaders(this IApplicationBuilder app, IReadOnlyCollection<IPNetwork> networks)
     {
-        app.UseForwardedHeaders();
         var logger = app.ApplicationServices.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(ForwardedHeadersSetup).FullName!);
         var warned = 0;
-        return app.Use((context, next) =>
+        app.Use((context, next) =>
         {
-            // The middleware moves what it used to X-Original-For; X-Forwarded-For without it was not believed.
-            var headers = context.Request.Headers;
-            if (headers.ContainsKey(ForwardedHeadersDefaults.XForwardedForHeaderName)
-                && !headers.ContainsKey(ForwardedHeadersDefaults.XOriginalForHeaderName)
+            if (context.Connection.RemoteIpAddress is { } peer
+                && context.Request.Headers.ContainsKey(ForwardedHeadersDefaults.XForwardedForHeaderName)
+                && !networks.Any(n => n.Contains(Plain(peer)))
                 && Interlocked.Exchange(ref warned, 1) == 0)
-                logger.LogWarning("X-Forwarded-For came from {Peer}, outside {Setting}: callers are seen as that proxy.", context.Connection.RemoteIpAddress, NetworksKey);
+                logger.LogWarning("X-Forwarded-For came from {Peer}, outside {Setting}: callers are seen as that proxy.", Describe(peer), NetworksKey);
             return next(context);
         });
+        return app.UseForwardedHeaders();
     }
+
+    /// <summary>IPv4 as IPv4, however Kestrel reports it on a dual-mode socket.</summary>
+    private static IPAddress Plain(IPAddress address) => address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
+
+    /// <summary>A proxy's address (private or link-local) is worth logging; anyone else's is not ours to keep.</summary>
+    private static string Describe(IPAddress peer)
+    {
+        var plain = Plain(peer);
+        return PrivateRanges.Any(n => n.Contains(plain)) ? plain.ToString() : "a public address";
+    }
+
+    private static readonly IPNetwork[] PrivateRanges =
+        [.. new[] { "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10", "127.0.0.0/8", "fc00::/7", "fe80::/10", "::1/128" }.Select(r => IPNetwork.Parse(r))];
 }
