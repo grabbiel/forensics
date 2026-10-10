@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
@@ -134,11 +134,11 @@ describe('InboxPage', () => {
     const fetchMock = stubFetch(200, page([]))
     const router = renderAt('/?type=LOG')
     const clear = await screen.findByRole('button', { name: 'Quitar filtros' })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }) // only the search box's pause; React keeps its own
 
-    await userEvent.type(screen.getByRole('searchbox'), 'vpn')
-    await userEvent.click(clear) // before the search box's pause ends
-    await waitFor(() => expect(router.state.location.search).toBe(''))
-    await act(() => new Promise((resolve) => setTimeout(resolve, DEBOUNCE_MS + 100)))
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'vpn' } })
+    fireEvent.click(clear) // before the search box's pause ends
+    await act(() => vi.advanceTimersByTimeAsync(DEBOUNCE_MS * 2))
 
     expect(router.state.location.search).toBe('')
     expect(screen.getByRole('searchbox')).toHaveValue('')

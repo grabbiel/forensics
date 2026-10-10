@@ -2,7 +2,7 @@ import { MagnifyingGlass } from '@phosphor-icons/react'
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { NavigationType, useLocation, useNavigate, useNavigation, useNavigationType, type Location, type Path } from 'react-router'
 import { useRouterNow } from '../lib/useRouterNow'
-import { useUpdateSearch } from '../lib/useUpdateSearch'
+import { clearsFilters, useUpdateSearch } from '../lib/useUpdateSearch'
 
 export const DEBOUNCE_MS = 300
 
@@ -14,9 +14,6 @@ const SENT = { sentBySearchBox: true }
 /** Whether this box made the navigation to `location`. Back or Forward to an entry it once made is someone else's. */
 const sentByBox = (location: Location, action: NavigationType | undefined) =>
   action !== NavigationType.Pop && location.state?.sentBySearchBox === true
-
-/** Whether `location` came from "Quitar filtros", which wins over a search typed and not yet sent. */
-const clearsFilters = (location: Location) => location.state?.clearsFilters === true
 
 /** A visit to a page: its history key and its URL, since the browser keys a fresh load and every #fragment "default". */
 const visitOf = ({ key, pathname, search, hash }: Location) => `${key} ${pathname}${search}${hash}`
@@ -73,8 +70,8 @@ export function SearchBox() {
 
   /**
    * Whether a pause that ends now may search: on the inbox while the box is in step with it, or on the way to a search
-   * the box sent. A row, a link, Back, Forward or "Quitar filtros" the user chose wins, even one React has not rendered
-   * yet.
+   * the box sent. A row, a link to another page, Back, Forward or "Quitar filtros" the user chose wins, even one React
+   * has not rendered yet.
    */
   function mayRefine() {
     const now = routerNow()

@@ -2,14 +2,25 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { createMemoryRouter, Outlet, type InitialEntry, type LoaderFunctionArgs } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CLEARS_FILTERS } from '../lib/useUpdateSearch'
+import { CLEARS_FILTERS, useUpdateSearch } from '../lib/useUpdateSearch'
 import { DEBOUNCE_MS, SearchBox } from './SearchBox'
 
 const code = 'LOG202609110007'
 
+/** Stands in for the inbox's CSV tab, which edits the search the same way. */
+function CsvTab() {
+  const updateSearch = useUpdateSearch()
+  return (
+    <button type="button" onClick={() => updateSearch((params) => params.set('type', 'CSV'))}>
+      CSV
+    </button>
+  )
+}
+
 /**
- * Mounts the search box above stand-in inbox and evidence pages, as the app shell does. Their loaders only record the
- * URLs they load after the first render, so no fetch is involved; `hold` keeps one page loading until released.
+ * Mounts the search box and a tab above stand-in inbox and evidence pages, as the app shell does. Their loaders only
+ * record the URLs they load after the first render, so no fetch is involved; `hold` keeps one page loading until
+ * released.
  */
 function renderSearch(initialEntries: InitialEntry[] = ['/'], initialIndex?: number) {
   const loads: string[] = []
@@ -27,6 +38,7 @@ function renderSearch(initialEntries: InitialEntry[] = ['/'], initialIndex?: num
         element: (
           <>
             <SearchBox />
+            <CsvTab />
             <Outlet />
           </>
         ),
@@ -279,6 +291,21 @@ describe('SearchBox', () => {
       expect(input).toHaveValue('')
     })
 
+    it('keeps winning when a tab clicked while it loads takes its place', async () => {
+      const { router, loads, hold, input } = renderSearch(['/?type=LOG'])
+      const release = hold('inbox')
+
+      typeInto(input, 'vpn')
+      act(() => void clear(router))
+      fireEvent.click(screen.getByRole('button', { name: 'CSV' })) // built on the clear, before the pause ends
+      await advance(DEBOUNCE_MS)
+      await act(async () => release())
+
+      expect(url(router.state.location)).toBe('/?type=CSV')
+      expect(loads).toEqual(['/', '/?type=CSV'])
+      expect(input).toHaveValue('')
+    })
+
     it('searches as usual once the clear is shown', async () => {
       const { router, input } = renderSearch(['/?type=LOG'])
 
@@ -287,6 +314,19 @@ describe('SearchBox', () => {
       await advance(DEBOUNCE_MS)
 
       expect(url(router.state.location)).toBe('/?q=vpn')
+      expect(router.state.historyAction).toBe('REPLACE')
+    })
+
+    it('builds on a tab clicked on the cleared inbox, which is no clear itself', async () => {
+      const { router, input } = renderSearch(['/?type=LOG'])
+
+      await act(() => clear(router))
+      typeInto(input, 'vpn')
+      fireEvent.click(screen.getByRole('button', { name: 'CSV' })) // before the pause ends
+      await advance(DEBOUNCE_MS)
+
+      expect(url(router.state.location)).toBe('/?type=CSV&q=vpn')
+      expect(input).toHaveValue('vpn')
     })
   })
 
