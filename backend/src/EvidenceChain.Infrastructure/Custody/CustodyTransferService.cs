@@ -222,4 +222,7 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
             transfer.DecidedById is { } decidedBy ? people.Of(decidedBy) : null, transfer.DecidedAtUtc, transfer.DecisionNotes,
             EntityTags.Format(transfer.RowVersion));
     }
+
+    public Task<CustodyTransfer?> FindAsync(long transferId, CancellationToken cancellationToken) => 
+        db.CustodyTransfers.AsNoTracking().SingleOrDefaultAsync(t => t.TransferId == transferId, cancellationToken);
 }

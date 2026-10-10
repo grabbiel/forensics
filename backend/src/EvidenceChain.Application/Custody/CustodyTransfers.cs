@@ -57,4 +57,6 @@ public interface ICustodyTransfers
     Task<TransferOutcome> DecideAsync(
         long transferId, TransferCommand command, string? notes, Actor decider, byte[] expectedVersion, Guid idempotencyKey, byte[] fingerprint,
         CancellationToken cancellationToken);
+
+    Task<CustodyTransfer?> FindAsync(long transferId, CancellationToken cancellationToken);
 }
