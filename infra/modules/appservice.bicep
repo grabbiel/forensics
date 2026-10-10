@@ -60,6 +60,13 @@ resource webApp 'Microsoft.Web/sites@2025-03-01' = {
           { name: 'Jwt__SigningKey', value: jwtSigningKeyRef }
           { name: 'Integrity__ActiveKeyId', value: 'k1' }
           { name: 'Integrity__Keys__k1', value: integrityKeyRef }
+          // App Service's front ends reach the app from private or link-local addresses; only they may say who called.
+          // The framework's switch trusts every proxy, so the API refuses to start with it on; pinned off here.
+          { name: 'ASPNETCORE_FORWARDEDHEADERS_ENABLED', value: 'false' }
+          { name: 'ForwardedHeaders__KnownIPNetworks__0', value: '10.0.0.0/8' }
+          { name: 'ForwardedHeaders__KnownIPNetworks__1', value: '172.16.0.0/12' }
+          { name: 'ForwardedHeaders__KnownIPNetworks__2', value: '192.168.0.0/16' }
+          { name: 'ForwardedHeaders__KnownIPNetworks__3', value: '169.254.0.0/16' }
         ],
         empty(corsOrigin) ? [] : [{ name: 'Cors__Origins__0', value: corsOrigin }]
       )

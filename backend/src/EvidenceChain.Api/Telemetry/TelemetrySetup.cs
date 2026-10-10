@@ -26,6 +26,7 @@ public static class TelemetrySetup
             {
                 previous?.Invoke(activity, response);
                 MarkClientErrorsAsHandled(activity, response);
+                RecordCaller(activity, response.HttpContext);
             };
         });
         return services;
@@ -39,5 +40,15 @@ public static class TelemetrySetup
     {
         if (response.StatusCode is >= 400 and < 500)
             activity.SetStatus(ActivityStatusCode.Ok);
+    }
+
+    /// <summary>
+    /// The caller as the forwarded-headers middleware resolved it: the span's own tags were taken before it ran. The
+    /// exporter sends it as the request's client address, which Application Insights turns into a location and masks.
+    /// </summary>
+    internal static void RecordCaller(Activity activity, HttpContext context)
+    {
+        if (context.Connection.RemoteIpAddress is { } caller)
+            activity.SetTag("client.address", (caller.IsIPv4MappedToIPv6 ? caller.MapToIPv4() : caller).ToString());
     }
 }

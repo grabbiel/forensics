@@ -77,6 +77,8 @@ Steps 4 and 6 again, in the order the migration needs:
 - **It adds what the new API reads:** run step 4 (migrations) first, then `azd deploy api`.
 - **It removes what the running API still reads:** `azd deploy api` first, then step 4. `DropUnusedIndexesAndInboxColumns` is one: run it before the deploy and every custody write fails until the new API is live.
 
+A change under `infra/` (such as app settings) needs `azd provision` before `azd deploy api`. Provisioning replaces the web app's settings with those in Bicep, so any added in the portal are lost.
+
 ## Teardown
 
 `azd down --purge` deletes the resource group and purges the Key Vault, so its name can be reused at once.

@@ -10,6 +10,7 @@ using EvidenceChain.Api.Telemetry;
 using EvidenceChain.Application.Anomalies;
 using EvidenceChain.Domain.Anomalies;
 using EvidenceChain.Infrastructure;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Metadata;
 using Microsoft.Extensions.Options;
 
@@ -50,6 +51,11 @@ builder.Services.AddOptions<AnomalyOptions>()
 builder.Services.AddSingleton(sp => new OverdueTransferRule(
     sp.GetRequiredService<IOptions<AnomalyOptions>>().Value.TransferAcceptanceDeadline, sp.GetRequiredService<TimeProvider>()));
 
+// Empty means no proxy is believed: an empty list of known proxies would otherwise make the middleware trust them all.
+var proxyNetworks = ForwardedHeadersSetup.KnownNetworks(builder.Configuration);
+if (proxyNetworks.Length > 0)
+    builder.Services.Configure<ForwardedHeadersOptions>(o => ForwardedHeadersSetup.TrustOnly(o, proxyNetworks));
+
 string[] corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [];
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
     .WithOrigins(corsOrigins)
@@ -59,6 +65,9 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
 
 var app = builder.Build();
 
+// First, so everything after (rate limits, telemetry, Location URLs) sees the caller, not the proxy.
+if (proxyNetworks.Length > 0)
+    app.UseTrustedForwardedHeaders(proxyNetworks);
 app.UseExceptionHandler(); // unhandled errors → application/problem+json
 app.UseStatusCodePages();  // empty 4xx/5xx → application/problem+json
 app.Use(NoStoreForApi);

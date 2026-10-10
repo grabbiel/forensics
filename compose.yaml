@@ -46,6 +46,9 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Default: ${APP_CONNECTION:-Server=mssql,1433;Database=EvidenceChain;User Id=evidence_app;Password=${APP_DB_PASSWORD:-DevOnly_AppPassw0rd!2026};Encrypt=True;TrustServerCertificate=True}
+      # nginx (web) is the proxy, on one of Docker's default networks. The port below is published to this machine only.
+      ForwardedHeaders__KnownIPNetworks__0: 172.16.0.0/12
+      ForwardedHeaders__KnownIPNetworks__1: 192.168.0.0/16
     ports:
       - "127.0.0.1:8081:8080"
     depends_on:
