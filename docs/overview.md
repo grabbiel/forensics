@@ -1,8 +1,8 @@
 # Overview
 
-Evidence Chain records digital evidence, its custody history and its transfers. Both journeys in the brief run end to end, from React to SQL Server.
+Evidence Chain records digital evidence, its custody history and its transfers. Both journeys run end to end, from React to SQL Server.
 
-**Done.** An inbox with filters in the URL and keyset pages. Evidence detail with the custody timeline, the overdue-transfer anomaly and chain verification. Transfers through a state machine, with `If-Match`, `409` and `Idempotency-Key`, shown as pending at once. An append-only HMAC chain, JWT roles, problem+json, a tested `openapi.yaml` and a seed of 1,000 items and 10,000 events. Extras: an Azure deployment, a 200,000-event measurement and an hourly integrity sweep.
+**Done.** An inbox with filters in the URL and keyset pages, forward and back. Evidence detail with the custody timeline, the overdue-transfer anomaly and chain verification. Transfers through a state machine, with `If-Match`, `409` and `Idempotency-Key`, shown as pending. An append-only HMAC chain, JWT roles, problem+json, a tested `openapi.yaml` and a seed of 1,000 items and 10,000 events. Extras: an Azure deployment, a 200,000-event measurement and an hourly integrity sweep.
 
 **Left out.** File upload, rate limiting, i18n (the UI is in Spanish) and real identity: sign-in picks a demo user. The first alert is designed, not provisioned.
 
