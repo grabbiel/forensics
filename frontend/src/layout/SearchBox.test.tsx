@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { createMemoryRouter, Outlet, type LoaderFunctionArgs } from 'react-router'
+import { createMemoryRouter, Outlet, type InitialEntry, type LoaderFunctionArgs } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEBOUNCE_MS, SearchBox } from './SearchBox'
@@ -10,7 +10,7 @@ const code = 'LOG202609110007'
  * Mounts the search box above stand-in inbox and evidence pages, as the app shell does. Their loaders only record the
  * URLs they load after the first render, so no fetch is involved; `hold` keeps one page loading until released.
  */
-function renderSearch(initialEntries = ['/'], initialIndex?: number) {
+function renderSearch(initialEntries: InitialEntry[] = ['/'], initialIndex?: number) {
   const loads: string[] = []
   const waits: Partial<Record<'inbox' | 'evidence', Promise<void>>> = {}
   const record = (page: 'inbox' | 'evidence') => async ({ request }: LoaderFunctionArgs) => {
@@ -125,6 +125,23 @@ describe('SearchBox', () => {
     expect(input).toHaveValue('')
   })
 
+  it('lets a row clicked just as the pause ends load too, before React has rendered the click', async () => {
+    const { router, loads, hold, input } = renderSearch(['/?q=vpn'])
+    const release = hold('evidence')
+
+    typeInto(input, 'vpn fw')
+    await advance(DEBOUNCE_MS - 1)
+    await act(async () => {
+      void router.navigate(`/evidence/${code}`) // React renders this in a transition, once the act is over
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    await act(async () => release())
+
+    expect(url(router.state.location)).toBe(`/evidence/${code}`)
+    expect(loads).toEqual([`/evidence/${code}`])
+    expect(input).toHaveValue('')
+  })
+
   describe('on any other page', () => {
     it('searches nothing and reloads nothing while the user types', async () => {
       const { router, loads, input } = renderSearch([`/evidence/${code}`])
@@ -153,6 +170,8 @@ describe('SearchBox', () => {
       await act(() => router.navigate(-1))
       expect(url(router.state.location)).toBe(`/evidence/${code}?q=old&cursor=abc`)
       expect(input).toHaveValue('')
+      await act(() => router.navigate(1)) // Forward to the entry the box made is not the box's doing
+      expect(input).toHaveValue('firewall')
     })
 
     it('keeps searching what the user types while the inbox loads, and keeps the page they left', async () => {
@@ -171,6 +190,48 @@ describe('SearchBox', () => {
 
       await act(() => router.navigate(-1))
       expect(url(router.state.location)).toBe(`/evidence/${code}`)
+    })
+
+    it('refines in place a search that landed just as the pause ended, before React has rendered it', async () => {
+      const { router, loads, hold, input } = renderSearch([`/evidence/${code}`])
+      const releaseSearch = hold('inbox')
+
+      typeInto(input, 'firewall')
+      await submit(input)
+      typeInto(input, 'firewall edge')
+      await advance(DEBOUNCE_MS - 1)
+      let releaseRefinement = () => {}
+      await act(async () => {
+        releaseSearch() // the search lands; React renders it in a transition, once the act is over
+        releaseRefinement = hold('inbox')
+        await vi.advanceTimersByTimeAsync(1)
+      })
+
+      // React shows the search that landed while the refinement loads, and keeps what was typed.
+      expect(url(router.state.location)).toBe('/?q=firewall')
+      expect(input).toHaveValue('firewall edge')
+      await act(async () => releaseRefinement())
+      expect(url(router.state.location)).toBe('/?q=firewall+edge')
+      expect(loads).toEqual(['/?q=firewall', '/?q=firewall+edge'])
+      expect(input).toHaveValue('firewall edge')
+
+      await act(() => router.navigate(-1)) // replaced, so the evidence page is the entry before
+      expect(url(router.state.location)).toBe(`/evidence/${code}`)
+    })
+
+    it('says what it is looking for while that search loads, and leaves it to the inbox once there', async () => {
+      const { router, hold, input } = renderSearch([`/evidence/${code}`])
+      const release = hold('inbox')
+      const status = screen.getByRole('status')
+      expect(status).toBeEmptyDOMElement()
+
+      typeInto(input, 'firewall')
+      await submit(input)
+      expect(status).toHaveTextContent('Buscando «firewall»…')
+
+      await act(async () => release())
+      expect(url(router.state.location)).toBe('/?q=firewall')
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
     })
 
     it('stays put on Enter with nothing typed', async () => {
@@ -210,6 +271,47 @@ describe('SearchBox', () => {
 
       await act(() => router.navigate(1)) // the evidence page is still one Forward away
       expect(url(router.state.location)).toBe(`/evidence/${code}`)
+    })
+
+    it('tells Back from its own search while that loads, even when Back goes to an inbox search like it', async () => {
+      // The entry Back goes to is a search the box made earlier.
+      const earlier = { pathname: '/', search: '?q=fire&type=LOG', state: { sentBySearchBox: true } }
+      const { router, loads, hold, input } = renderSearch([earlier, `/evidence/${code}`], 1)
+      const release = hold('inbox')
+
+      typeInto(input, 'fire')
+      await submit(input)
+      typeInto(input, 'fire edge')
+      act(() => void router.navigate(-1))
+      await advance(DEBOUNCE_MS)
+      await act(async () => release())
+
+      expect(url(router.state.location)).toBe('/?q=fire&type=LOG')
+      expect(loads).toEqual(['/?q=fire', '/?q=fire&type=LOG'])
+      expect(input).toHaveValue('fire')
+
+      await act(() => router.navigate(1))
+      expect(url(router.state.location)).toBe(`/evidence/${code}`)
+    })
+
+    it('tells it too when that Back lands just as the pause ends, before React has rendered it', async () => {
+      const earlier = { pathname: '/', search: '?q=fire&type=LOG', state: { sentBySearchBox: true } }
+      const { router, loads, hold, input } = renderSearch([earlier, `/evidence/${code}`], 1)
+      const release = hold('inbox')
+
+      typeInto(input, 'fire')
+      await submit(input)
+      typeInto(input, 'fire edge')
+      await advance(DEBOUNCE_MS - 1)
+      await act(async () => {
+        void router.navigate(-1)
+        release() // Back lands; React renders it in a transition, once the act is over
+        await vi.advanceTimersByTimeAsync(1)
+      })
+
+      expect(url(router.state.location)).toBe('/?q=fire&type=LOG')
+      expect(loads).toEqual(['/?q=fire', '/?q=fire&type=LOG'])
+      expect(input).toHaveValue('fire')
     })
   })
 })

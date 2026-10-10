@@ -69,8 +69,6 @@ export function InboxPage() {
 
   return (
     <section className="panel" aria-labelledby="inbox-title">
-      {loading && <div className="progress" aria-hidden="true" />}
-
       <div className="panel__head">
         <h1 id="inbox-title" className="panel__title" ref={titleRef} tabIndex={-1}>
           Bandeja de evidencias

@@ -1,18 +1,20 @@
 import { LinkSimple, SignOut } from '@phosphor-icons/react'
-import { Form, Link, Outlet } from 'react-router'
+import { Form, Link, Outlet, useNavigation } from 'react-router'
 import { getSession } from '../auth/session'
 import { SearchBox } from './SearchBox'
 
-/** Page frame: skip link, sticky header with the search and who is signed in, main content, footer. */
+/** Page frame: skip link, sticky header with the search, who is signed in and a page load's progress, main content, footer. */
 export function AppShell() {
   // Loaders send anyone signed out to /login, so a user is here whenever a page renders.
   const user = getSession()?.user
+  const navigating = useNavigation().state !== 'idle'
   return (
     <>
       <a className="skip-link" href="#main">
         Saltar al contenido
       </a>
       <header className="topbar">
+        {navigating && <div className="progress" aria-hidden="true" />}
         <div className="topbar__inner">
           <Link to="/" className="brand" aria-label="Evidence Chain, inicio">
             <span className="brand__mark">

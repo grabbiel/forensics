@@ -150,17 +150,20 @@ describe('a slow answer for an earlier filter', () => {
 })
 
 describe('a search typed on an evidence page', () => {
-  it('reads nothing again while the user types, and on Enter opens the inbox with that search', async () => {
+  it('reads nothing again while the user types, and on Enter shows progress, then the inbox with that search', async () => {
     signInAs('Investigador')
     const reads = evidenceApi({ detail })
     const searched: (string | null)[] = []
+    let answer: () => void = () => {}
+    const answered = new Promise<void>((resolve) => (answer = resolve))
     server.use(
-      http.get('/api/v1/evidence', ({ request }) => {
+      http.get('/api/v1/evidence', async ({ request }) => {
         searched.push(new URL(request.url).searchParams.get('q'))
+        await answered
         return HttpResponse.json({ items: [summary(code, 'Log del firewall')], nextCursor: null })
       }),
     )
-    const { router } = await openEvidence()
+    const { router, view } = await openEvidence()
     const search = screen.getByRole('searchbox')
 
     await userEvent.type(search, 'firewall')
@@ -170,7 +173,13 @@ describe('a search typed on an evidence page', () => {
 
     await userEvent.keyboard('{Enter}')
 
+    // While the inbox loads: a bar under the header, and the search said aloud.
+    await waitFor(() => expect(within(screen.getByRole('search')).getByRole('status')).toHaveTextContent('Buscando «firewall»…'))
+    expect(view.container.querySelector('.topbar .progress')).toBeInTheDocument()
+    await act(async () => answer())
+
     await screen.findByRole('heading', { level: 1, name: 'Bandeja de evidencias' })
+    expect(view.container.querySelector('.progress')).not.toBeInTheDocument()
     expect(router.state.location.pathname + router.state.location.search).toBe('/?q=firewall')
     expect(searched).toEqual(['firewall'])
     expect(shownCodes()).toEqual([code])
