@@ -17,7 +17,9 @@ namespace EvidenceChain.Infrastructure.Custody;
 /// evidence head and the inbox projection, with the idempotency key and request fingerprint stored alongside.
 /// Every write first takes an update lock on its evidence's row, so writes to one evidence run one after another and
 /// everything read after the lock is the latest committed state. Clients still get optimistic concurrency: If-Match
-/// decides the 409, and no lock is held between a client's read and its write.
+/// decides the 409, and no lock is held between a client's read and its write. A retry of a write that already
+/// committed answers without the lock, and every answer is built after the transaction: nothing waits on the lock for
+/// it, and a fault while building it cannot run the write again.
 /// </summary>
 internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing keys, TimeProvider clock, PeopleIndexProvider peopleIndex) : ICustodyTransfers
 {
@@ -26,6 +28,9 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
     private const string DecisionKeyIndex = "UX_CustodyTransfers_DecisionKey";
     private const string EventSeqIndex = "UX_CustodyEvents_EvidenceSeq";
     private const int RequestAttempts = 3;
+
+    /// <summary>What a write left: the transfer, the evidence code when it is at hand, and whether it answered an earlier request.</summary>
+    private sealed record Written(CustodyTransfer Transfer, string? EvidenceCode, bool Replayed);
 
     public async Task<TransferResource?> GetAsync(long transferId, CancellationToken cancellationToken)
     {
@@ -39,16 +44,17 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
         {
             try
             {
-                return await db.Database.CreateExecutionStrategy().ExecuteAsync(
+                var written = await db.Database.CreateExecutionStrategy().ExecuteAsync(
                     () => RequestOnceAsync(request, requester, idempotencyKey, fingerprint, cancellationToken));
+                return await OutcomeAsync(written, cancellationToken);
             }
             catch (DbUpdateException e) when (UniqueViolation.IndexOf(e) is RequestKeyIndex or OnePendingIndex)
             {
                 // Another request committed first. A duplicate of ours breaks both indexes and SQL Server names either,
                 // so look for our key before calling it a second pending transfer.
                 db.ChangeTracker.Clear();
-                if (await ReplayRequestAsync(requester, idempotencyKey, fingerprint, cancellationToken) is { } replay)
-                    return replay;
+                if (await FindRequestAsync(requester, idempotencyKey, fingerprint, cancellationToken) is { } replay)
+                    return await OutcomeAsync(new Written(replay, request.EvidenceCode, Replayed: true), cancellationToken);
                 if (UniqueViolation.IndexOf(e) == RequestKeyIndex)
                     throw new IdempotencyInFlightException(idempotencyKey);
                 // The winner may already be decided; then the evidence takes requests again, so try again.
@@ -76,8 +82,9 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
 
         try
         {
-            return await db.Database.CreateExecutionStrategy().ExecuteAsync(
+            var written = await db.Database.CreateExecutionStrategy().ExecuteAsync(
                 () => DecideOnceAsync(transferId, command, notes, decider, expectedVersion, idempotencyKey, fingerprint, cancellationToken));
+            return await OutcomeAsync(written, cancellationToken);
         }
         catch (DbUpdateException e) when (e is DbUpdateConcurrencyException || UniqueViolation.IndexOf(e) == EventSeqIndex)
         {
@@ -86,7 +93,8 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
             db.ChangeTracker.Clear();
             var current = await db.CustodyTransfers.AsNoTracking().SingleAsync(t => t.TransferId == transferId, cancellationToken);
             if (current.DecisionKey == idempotencyKey)
-                return await ReplayDecisionAsync(current, decider, idempotencyKey, fingerprint, cancellationToken);
+                return await OutcomeAsync(
+                    new Written(SameDecision(current, decider, idempotencyKey, fingerprint), EvidenceCode: null, Replayed: true), cancellationToken);
             throw current.Status == TransferStatus.Pending ? new StaleVersionException(current) : new InvalidTransitionException(command, current);
         }
         catch (DbUpdateException e) when (UniqueViolation.IndexOf(e) == DecisionKeyIndex)
@@ -95,18 +103,22 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
         }
     }
 
-    private async Task<TransferOutcome> RequestOnceAsync(TransferRequest request, Actor requester, Guid key, byte[] fingerprint, CancellationToken cancellationToken)
+    private async Task<Written> RequestOnceAsync(TransferRequest request, Actor requester, Guid key, byte[] fingerprint, CancellationToken cancellationToken)
     {
         db.ChangeTracker.Clear(); // a retry starts from what is committed
-        if (await ReplayRequestAsync(requester, key, fingerprint, cancellationToken) is { } commited)
-            return commited;
+        // A retry of a request that already committed answers from it, without waiting for the evidence's lock: reads see
+        // only committed rows, so this never blocks and never finds a request still in flight. The same fingerprint means
+        // the same request, so its evidence code is the request's.
+        if (await FindRequestAsync(requester, key, fingerprint, cancellationToken) is { } committed)
+            return new Written(committed, request.EvidenceCode, Replayed: true);
         var evidenceId = await db.Evidence.Where(e => e.Code == request.EvidenceCode).Select(e => (long?)e.EvidenceId).SingleOrDefaultAsync(cancellationToken)
             ?? throw new InvalidRequestException("evidenceCode", "No evidence has that code.");
+
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var evidence = await LockEvidenceAsync(evidenceId, cancellationToken);
         // After the lock: a duplicate sent in parallel waits here and then finds the first one's transfer.
-        if (await ReplayRequestAsync(requester, key, fingerprint, cancellationToken) is { } replay)
-            return replay;
+        if (await FindRequestAsync(requester, key, fingerprint, cancellationToken) is { } replay)
+            return new Written(replay, evidence.Code, Replayed: true);
         var recipient = await db.Users.AsNoTracking().SingleOrDefaultAsync(u => u.UserId == request.ToCustodianId, cancellationToken);
         if (recipient is not { Role: UserRole.Custodio })
             throw new InvalidRequestException("toCustodianId", "Send it to a user with the Custodio role.");
@@ -125,25 +137,28 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
         Project(await InboxRowAsync(evidence, cancellationToken), evidence, transfer, now, people);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new TransferOutcome(await RepresentAsync(transfer, evidence.Code, cancellationToken), Replayed: false);
+        return new Written(transfer, evidence.Code, Replayed: false);
     }
 
-    private async Task<TransferOutcome> DecideOnceAsync(
+    private async Task<Written> DecideOnceAsync(
         long transferId, TransferCommand command, string? notes, Actor decider, byte[] expectedVersion, Guid key, byte[] fingerprint,
         CancellationToken cancellationToken)
     {
         db.ChangeTracker.Clear();
-        var stored = await db.CustodyTransfers.AsNoTracking().SingleOrDefaultAsync(t => t.TransferId == transferId, cancellationToken) ?? throw new InvalidOperationException($"Transfer {transferId} does not exist");
-        if(stored.DecisionKey == key)
-            return await ReplayDecisionAsync(stored, decider, key, fingerprint, cancellationToken);
+        var stored = await db.CustodyTransfers.AsNoTracking().SingleOrDefaultAsync(t => t.TransferId == transferId, cancellationToken)
+            ?? throw new InvalidOperationException($"Transfer {transferId} does not exist.");
+        // A retry of a decision that already committed answers from it, without waiting for the evidence's lock.
+        if (stored.DecisionKey == key)
+            return new Written(SameDecision(stored, decider, key, fingerprint), EvidenceCode: null, Replayed: true);
+
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         // The evidence first, as requests do; then the transfer, which no other write can be changing now.
         var evidence = await LockEvidenceAsync(stored.EvidenceId, cancellationToken);
         var transfer = await db.CustodyTransfers.SingleAsync(t => t.TransferId == transferId, cancellationToken);
 
-        // A retry of a decision already made: answer as it did, whatever version the retry names.
+        // A retry of a decision made while this one waited for the lock: answer as it did, whatever version the retry names.
         if (transfer.DecisionKey == key)
-            return await ReplayDecisionAsync(transfer, decider, key, fingerprint, cancellationToken);
+            return new Written(SameDecision(transfer, decider, key, fingerprint), evidence.Code, Replayed: true);
 
         // A pending transfer only changes version when decided, so a different If-Match is an outdated read.
         if (transfer.Status == TransferStatus.Pending && !transfer.RowVersion.SequenceEqual(expectedVersion))
@@ -163,24 +178,28 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
         Project(await InboxRowAsync(evidence, cancellationToken), evidence, transfer, now, people);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new TransferOutcome(await RepresentAsync(transfer, evidence.Code, cancellationToken), Replayed: false);
+        return new Written(transfer, evidence.Code, Replayed: false);
     }
 
-    private async Task<TransferOutcome> ReplayDecisionAsync(CustodyTransfer transfer, Actor decider, Guid key, byte[] fingerprint, CancellationToken cancellationToken) =>
+    /// <summary>A retry of a decision: the same decider with the same request; otherwise the key was reused for another.</summary>
+    private static CustodyTransfer SameDecision(CustodyTransfer transfer, Actor decider, Guid key, byte[] fingerprint) =>
         transfer.DecidedById == decider.UserId && transfer.DecisionFingerprint is { } previous && previous.SequenceEqual(fingerprint)
-            ? new TransferOutcome(await RepresentAsync(transfer, code:null, cancellationToken), Replayed: true)
+            ? transfer
             : throw new IdempotencyKeyReusedException(key);
 
-    private async Task<TransferOutcome?> ReplayRequestAsync(Actor requester, Guid key, byte[] fingerprint, CancellationToken cancellationToken)
+    /// <summary>The transfer this requester's key already created, or null; the same key with another request is a 422.</summary>
+    private async Task<CustodyTransfer?> FindRequestAsync(Actor requester, Guid key, byte[] fingerprint, CancellationToken cancellationToken)
     {
         var existing = await db.CustodyTransfers.AsNoTracking()
             .SingleOrDefaultAsync(t => t.RequestedById == requester.UserId && t.ClientRequestId == key, cancellationToken);
         if (existing is null)
             return null;
-        return existing.RequestFingerprint.SequenceEqual(fingerprint)
-            ? new TransferOutcome(await RepresentAsync(existing, code:null, cancellationToken), Replayed: true)
-            : throw new IdempotencyKeyReusedException(key);
+        return existing.RequestFingerprint.SequenceEqual(fingerprint) ? existing : throw new IdempotencyKeyReusedException(key);
     }
+
+    /// <summary>The answer to a write, built once its transaction is over.</summary>
+    private async Task<TransferOutcome> OutcomeAsync(Written written, CancellationToken cancellationToken) =>
+        new(await RepresentAsync(written.Transfer, written.EvidenceCode, cancellationToken), written.Replayed);
 
     private async Task<CustodyTransfer?> PendingForAsync(string evidenceCode, CancellationToken cancellationToken)
     {
