@@ -19,12 +19,15 @@ public static class RateLimitPolicies
     public const string Inbox = "inbox";
     public const string Verify = "verify";
     public const string Writes = "writes";
+
+    public static IReadOnlyList<string> All { get; } = [SignIn, Docs, Reads, Inbox, Verify, Writes];
 }
 
 /// <summary>
-/// Token buckets per user (per client address before sign-in) on each endpoint, plus instance-wide gates on the work
-/// that costs the database most. All state is in memory: with more than one instance, each counts on its own.
-/// A rejection is a 429 problem with Retry-After, sent before the endpoint runs, so a throttled write saved nothing.
+/// Token buckets per caller (a signed-in user from one client address, or the address alone before sign-in) on each
+/// endpoint, then instance-wide limits on the work that costs the database most. All state is in memory: with more than
+/// one instance, each counts on its own. A rejection is a 429 problem with Retry-After, sent before the endpoint runs,
+/// so a throttled write saved nothing.
 /// </summary>
 public static class RateLimitingSetup
 {
@@ -42,16 +45,16 @@ public static class RateLimitingSetup
         {
             limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests; // the middleware's default is 503
             limiter.OnRejected = RejectAsync;
-            limiter.AddPolicy(RateLimitPolicies.SignIn, context => Bucket(context, "", AddressKey(context.Connection.RemoteIpAddress), o => o.SignIn));
-            limiter.AddPolicy(RateLimitPolicies.Docs, context => Bucket(context, "", AddressKey(context.Connection.RemoteIpAddress), o => o.Docs));
-            limiter.AddPolicy(RateLimitPolicies.Reads, context => Bucket(context, "", UserKey(context), o => o.Reads));
-            // One policy keeps its own partitions, so the inbox's two buckets live here rather than borrowing Reads'.
-            limiter.AddPolicy(RateLimitPolicies.Inbox, context => IsSearch(context)
-                ? Bucket(context, "search:", UserKey(context), o => o.Search)
-                : Bucket(context, "list:", UserKey(context), o => o.Reads));
-            limiter.AddPolicy(RateLimitPolicies.Verify, context => Bucket(context, "", UserKey(context), o => o.Verify));
-            limiter.AddPolicy(RateLimitPolicies.Writes, context => Bucket(context, "", UserKey(context), o => o.Writes));
-            limiter.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(InstanceGate);
+            // The endpoint's policy name says which limits apply; the global limiter applies them all, in an order that
+            // matters, because a refused request has spent whatever the limits before it gave (and the middleware tries
+            // twice). A spent token is never given back, a gate's permit is: so the caller's bucket comes before the
+            // shared write budget, which a caller over its own limit then cannot drain, and a gate comes before the
+            // caller's bucket, so a full gate costs the caller nothing. Gates keep no line, so nothing waits in one.
+            foreach (var policy in RateLimitPolicies.All)
+                limiter.AddPolicy(policy, _ => NoLimit);
+            limiter.GlobalLimiter = PartitionedRateLimiter.CreateChained(
+                PartitionedRateLimiter.Create<HttpContext, string>(context => Limits(context).First),
+                PartitionedRateLimiter.Create<HttpContext, string>(context => Limits(context).Then));
         });
         return services;
     }
@@ -73,35 +76,49 @@ public static class RateLimitingSetup
         return $"{new IPAddress(bytes)}/64";
     }
 
-    /// <summary>The validated token's user; authorization has already turned away requests without one.</summary>
-    private static string UserKey(HttpContext context) =>
-        context.User.FindFirst(TokenClaims.UserId)?.Value is { } id ? $"user:{id}" : AddressKey(context.Connection.RemoteIpAddress);
+    /// <summary>
+    /// The validated token's user from one client address. Signing in takes only a name and everyone uses the same demo
+    /// personas, so a user alone would let anyone drain a persona's budget for every reviewer signed in as it.
+    /// </summary>
+    private static string CallerKey(HttpContext context)
+    {
+        var address = AddressKey(context.Connection.RemoteIpAddress);
+        return context.User.FindFirst(TokenClaims.UserId)?.Value is { } id ? $"{id}@{address}" : address;
+    }
 
-    private static bool IsSearch(HttpContext context) => !string.IsNullOrWhiteSpace(context.Request.Query["q"]);
+    // The first value, as MVC binds it: "?q=%20&q=firewall" lists, so it counts as a list.
+    private static bool IsSearch(HttpContext context) => !string.IsNullOrWhiteSpace(context.Request.Query["q"].FirstOrDefault());
+
+    private static string? PolicyOf(HttpContext context) => context.GetEndpoint()?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName;
 
     private static RateLimitingOptions Current(HttpContext context) =>
         context.RequestServices.GetRequiredService<IOptions<RateLimitingOptions>>().Value;
 
-    private static RateLimitPartition<string> Bucket(HttpContext context, string kind, string key, Func<RateLimitingOptions, BucketOptions> choose)
-    {
-        var options = Current(context);
-        return options.Enabled ? RateLimitPartition.GetTokenBucketLimiter(kind + key, _ => TokenBucket(choose(options))) : NoLimit;
-    }
-
-    /// <summary>Writes by everyone together, and how many searches or verifications run at once; nothing else.</summary>
-    private static RateLimitPartition<string> InstanceGate(HttpContext context)
+    /// <summary>
+    /// The caller's own bucket for the endpoint's policy, with the instance-wide limit it shares with everyone, each in
+    /// the order explained where the limiter is set up: writes' shared budget after the caller's bucket, the search and
+    /// verification gates before it.
+    /// </summary>
+    private static (RateLimitPartition<string> First, RateLimitPartition<string> Then) Limits(HttpContext context)
     {
         var options = Current(context);
         if (!options.Enabled)
-            return NoLimit;
-        return context.GetEndpoint()?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName switch
+            return (NoLimit, NoLimit);
+        return PolicyOf(context) switch
         {
-            RateLimitPolicies.Writes => RateLimitPartition.GetTokenBucketLimiter("all-writes", _ => TokenBucket(options.AllWrites)),
-            RateLimitPolicies.Verify => RateLimitPartition.GetConcurrencyLimiter("verifications", _ => Gate(options.VerificationsAtOnce)),
-            RateLimitPolicies.Inbox when IsSearch(context) => RateLimitPartition.GetConcurrencyLimiter("searches", _ => Gate(options.SearchesAtOnce)),
-            _ => NoLimit,
+            RateLimitPolicies.SignIn => (Bucket("sign-in:" + AddressKey(context.Connection.RemoteIpAddress), options.SignIn), NoLimit),
+            RateLimitPolicies.Docs => (Bucket("docs:" + AddressKey(context.Connection.RemoteIpAddress), options.Docs), NoLimit),
+            RateLimitPolicies.Reads => (Bucket("reads:" + CallerKey(context), options.Reads), NoLimit),
+            RateLimitPolicies.Inbox when IsSearch(context) => (Gate("searches", options.SearchesAtOnce), Bucket("search:" + CallerKey(context), options.Search)),
+            RateLimitPolicies.Inbox => (Bucket("list:" + CallerKey(context), options.Reads), NoLimit),
+            RateLimitPolicies.Verify => (Gate("verifications", options.VerificationsAtOnce), Bucket("verify:" + CallerKey(context), options.Verify)),
+            RateLimitPolicies.Writes => (Bucket("writes:" + CallerKey(context), options.Writes), Bucket("all-writes", options.AllWrites)),
+            _ => (NoLimit, NoLimit),
         };
     }
+
+    private static RateLimitPartition<string> Bucket(string key, BucketOptions bucket) =>
+        RateLimitPartition.GetTokenBucketLimiter(key, _ => TokenBucket(bucket));
 
     // No queue on buckets: a request over the limit is turned away at once rather than held while work piles up.
     private static TokenBucketRateLimiterOptions TokenBucket(BucketOptions bucket) => new()
@@ -113,16 +130,12 @@ public static class RateLimitingSetup
         AutoReplenishment = true,
     };
 
-    private static ConcurrencyLimiterOptions Gate(GateOptions gate) => new()
-    {
-        PermitLimit = gate.PermitLimit,
-        QueueLimit = gate.QueueLimit,
-        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-    };
+    private static RateLimitPartition<string> Gate(string key, GateOptions gate) =>
+        RateLimitPartition.GetConcurrencyLimiter(key, _ => new ConcurrencyLimiterOptions { PermitLimit = gate.PermitLimit, QueueLimit = 0 });
 
     /// <summary>
-    /// 429 problem+json, with Retry-After in whole seconds: when the bucket has a token again, or a second for a gate
-    /// whose line was full (its work takes milliseconds).
+    /// 429 problem+json, with Retry-After in whole seconds: when the bucket has a token again, or a second for a full
+    /// gate (its work takes milliseconds).
     /// </summary>
     private static async ValueTask RejectAsync(OnRejectedContext rejected, CancellationToken cancellationToken)
     {

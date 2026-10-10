@@ -175,7 +175,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         foreach (var bucket in new[] { limits.SignIn, limits.Docs, limits.Reads, limits.Search, limits.Verify, limits.Writes, limits.AllWrites })
             (bucket.TokenLimit, bucket.TokensPerPeriod) = (bucket.TokenLimit * 1000, bucket.TokensPerPeriod * 1000);
         foreach (var gate in new[] { limits.SearchesAtOnce, limits.VerificationsAtOnce })
-            (gate.PermitLimit, gate.QueueLimit) = (gate.PermitLimit * 1000, gate.QueueLimit * 1000);
+            gate.PermitLimit *= 1000;
     }
 
     /// <summary>Stops the host, then the container.</summary>

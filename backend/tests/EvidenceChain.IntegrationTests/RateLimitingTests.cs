@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using EvidenceChain.Api.Problems;
 using EvidenceChain.Api.RateLimiting;
+using EvidenceChain.Application.Inbox;
 using EvidenceChain.Application.People;
 using EvidenceChain.Domain.People;
 using EvidenceChain.SyntheticData;
@@ -36,7 +37,7 @@ public sealed class RateLimitingTests(ApiFactory factory)
                 foreach (var bucket in new[] { limits.SignIn, limits.Docs, limits.Reads, limits.Search, limits.Verify, limits.Writes, limits.AllWrites })
                     (bucket.TokenLimit, bucket.TokensPerPeriod, bucket.ReplenishmentPeriod) = (2, 1, TimeSpan.FromMinutes(1));
                 foreach (var gate in new[] { limits.SearchesAtOnce, limits.VerificationsAtOnce })
-                    (gate.PermitLimit, gate.QueueLimit) = (1, 0);
+                    gate.PermitLimit = 1;
                 adjust?.Invoke(limits);
             }));
         });
@@ -109,15 +110,19 @@ public sealed class RateLimitingTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task Searching_has_a_bucket_apart_from_listing_the_inbox()
+    public async Task Listing_and_searching_the_inbox_each_have_a_bucket_apart_from_other_reads()
     {
         await using var api = Limited(factory, limits => limits.Search.TokenLimit = 1);
         var supervisor = api.CreateClientAs(TestUsers.Supervisor);
+        async Task<HttpStatusCode> Get(string path) => (await supervisor.GetAsync(path, Token)).StatusCode;
 
-        Assert.Equal(HttpStatusCode.OK, (await supervisor.GetAsync("/api/v1/evidence?q=firewall", Token)).StatusCode);
-        Assert.Equal(HttpStatusCode.TooManyRequests, (await supervisor.GetAsync("/api/v1/evidence?q=email", Token)).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await supervisor.GetAsync("/api/v1/evidence", Token)).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await supervisor.GetAsync("/api/v1/evidence?q=%20", Token)).StatusCode); // a blank search lists
+        Assert.Equal([HttpStatusCode.OK, HttpStatusCode.OK, HttpStatusCode.TooManyRequests],
+            [await Get("/api/v1/people"), await Get("/api/v1/people"), await Get("/api/v1/people")]);
+        Assert.Equal(HttpStatusCode.OK, await Get("/api/v1/evidence?q=firewall"));
+        Assert.Equal(HttpStatusCode.TooManyRequests, await Get("/api/v1/evidence?q=email"));
+        Assert.Equal(HttpStatusCode.OK, await Get("/api/v1/evidence"));
+        Assert.Equal(HttpStatusCode.OK, await Get("/api/v1/evidence?q=%20"));             // a blank search lists
+        Assert.Equal(HttpStatusCode.TooManyRequests, await Get("/api/v1/evidence?q=%20&q=x")); // so does a blank first q, as MVC binds it
     }
 
     [Fact]
@@ -136,6 +141,100 @@ public sealed class RateLimitingTests(ApiFactory factory)
             statuses.Add((await api.CreateClientAs(user).PostAsJsonAsync("/api/v1/custody-transfers", new { }, Token)).StatusCode);
 
         Assert.Equal([HttpStatusCode.BadRequest, HttpStatusCode.BadRequest, HttpStatusCode.TooManyRequests], statuses);
+    }
+
+    [Fact]
+    public async Task A_caller_over_its_own_write_limit_spends_none_of_the_shared_budget()
+    {
+        await using var api = Limited(factory, limits => (limits.Writes.TokenLimit, limits.AllWrites.TokenLimit) = (1, 2));
+        async Task<HttpStatusCode> WriteAs(UserSummary user) =>
+            (await api.CreateClientAs(user).PostAsJsonAsync("/api/v1/custody-transfers", new { }, Token)).StatusCode;
+
+        var looping = new List<HttpStatusCode>();
+        for (var i = 0; i < 4; i++)
+            looping.Add(await WriteAs(TestUsers.Investigator));
+
+        // Refused by its own bucket, the loop left the shared budget's second token for someone else.
+        Assert.Equal([HttpStatusCode.BadRequest, HttpStatusCode.TooManyRequests, HttpStatusCode.TooManyRequests, HttpStatusCode.TooManyRequests], looping);
+        Assert.Equal(HttpStatusCode.BadRequest, await WriteAs(new UserSummary(2, "martin.ochoa", "Martín Ochoa", UserRole.Investigador)));
+    }
+
+    [Fact]
+    public async Task A_full_search_gate_answers_at_once_and_costs_the_caller_nothing()
+    {
+        var inbox = new HeldInbox();
+        await using var api = Limited(factory, limits => limits.Search.TokenLimit = 1)
+            .WithWebHostBuilder(b => b.ConfigureTestServices(services => services.AddScoped<IEvidenceInboxQuery>(_ => inbox)));
+        async Task<HttpResponseMessage> SearchAs(UserSummary user, string q) => await api.CreateClientAs(user).GetAsync($"/api/v1/evidence?q={q}", Token);
+
+        var held = SearchAs(TestUsers.Custodian, HeldInbox.Hold);
+        await inbox.Holding.WaitAsync(TimeSpan.FromSeconds(10), Token);
+
+        // The one search allowed at once is running: refused at once, to try again in a second.
+        var gateFull = await SearchAs(TestUsers.Supervisor, "firewall");
+        Assert.Equal((HttpStatusCode.TooManyRequests, "1"), (gateFull.StatusCode, gateFull.Headers.GetValues("Retry-After").Single()));
+
+        inbox.Release();
+        Assert.Equal(HttpStatusCode.OK, (await held).StatusCode);
+        // The refusal spent none of the supervisor's one search.
+        Assert.Equal(HttpStatusCode.OK, (await SearchAs(TestUsers.Supervisor, "firewall")).StatusCode);
+        // Its bucket now empty, it is refused for longer; the gate it passed on the way is free again for others.
+        var outOfSearches = await SearchAs(TestUsers.Supervisor, "email");
+        Assert.Equal(HttpStatusCode.TooManyRequests, outOfSearches.StatusCode);
+        Assert.True(int.Parse(outOfSearches.Headers.GetValues("Retry-After").Single()) > 1);
+        Assert.Equal(HttpStatusCode.OK, (await SearchAs(TestUsers.Investigator, "email")).StatusCode);
+    }
+
+    /// <summary>An inbox whose search for <see cref="Hold"/> runs until released; every other answer is an empty page.</summary>
+    private sealed class HeldInbox : IEvidenceInboxQuery
+    {
+        public const string Hold = "hold";
+        private readonly TaskCompletionSource _holding = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Holding => _holding.Task;
+
+        public void Release() => _released.TrySetResult();
+
+        public async Task<InboxPage> ListAsync(EvidenceInboxFilter filter, CancellationToken cancellationToken)
+        {
+            if (filter.Query == Hold)
+            {
+                _holding.TrySetResult();
+                await _released.Task.WaitAsync(cancellationToken);
+            }
+            return new InboxPage([], null);
+        }
+    }
+
+    [Fact]
+    public async Task A_request_without_a_token_is_a_401_that_spends_nothing()
+    {
+        await using var api = Limited(factory, limits => limits.Reads.TokenLimit = 1);
+        var anonymous = api.CreateClient();
+
+        for (var i = 0; i < 3; i++)
+            Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/v1/people", Token)).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_user_signed_in_from_another_network_has_a_budget_of_its_own_there()
+    {
+        // Everyone signs in as the same demo personas: draining one from a network must not lock it out for the rest.
+        await using var api = Limited(factory);
+        var token = api.Services.GetRequiredService<EvidenceChain.Api.Auth.TokenIssuer>().Issue(TestUsers.Supervisor).AccessToken;
+        async Task<int> ReadFrom(string address) => (await api.Server.SendAsync(c =>
+        {
+            c.Request.Path = "/api/v1/people";
+            c.Request.Headers.Authorization = $"Bearer {token}";
+            c.Connection.RemoteIpAddress = IPAddress.Parse(address);
+        }, Token)).Response.StatusCode;
+
+        var statuses = new List<int>();
+        foreach (var address in new[] { "203.0.113.5", "203.0.113.5", "203.0.113.5", "198.51.100.9" })
+            statuses.Add(await ReadFrom(address));
+
+        Assert.Equal([200, 200, 429, 200], statuses);
     }
 
     [Theory]
@@ -177,12 +276,9 @@ public sealed class RateLimitingTests(ApiFactory factory)
     [Fact]
     public async Task A_throttled_write_saves_nothing_and_its_key_is_a_first_attempt_once_the_wait_is_over()
     {
-        // One write per second for the user; the shared budget, which keeps the token of a refused request, out of the way.
+        // One write per second for the user.
         await using var api = Limited(await factory.SeededApiAsync("EvidenceChainRateLimits"), limits =>
-        {
-            (limits.Writes.TokenLimit, limits.Writes.ReplenishmentPeriod) = (1, TimeSpan.FromSeconds(1));
-            limits.AllWrites.TokenLimit = 100;
-        });
+            (limits.Writes.TokenLimit, limits.Writes.ReplenishmentPeriod) = (1, TimeSpan.FromSeconds(1)));
         var (code, recipient) = FreeEvidence();
         var investigator = api.CreateClientAs(TestUsers.Investigator);
         var key = Guid.NewGuid();
@@ -202,8 +298,13 @@ public sealed class RateLimitingTests(ApiFactory factory)
         var detail = await api.CreateClientAs(TestUsers.Supervisor).GetFromJsonAsync<JsonElement>($"/api/v1/evidence/{code}", Token);
         Assert.Equal(JsonValueKind.Null, detail.GetProperty("pendingTransfer").ValueKind);
 
-        await Task.Delay(TimeSpan.FromSeconds(1.2), Token);
+        // Tokens come back on a 100 ms tick, so wait for one rather than for exactly a second.
         var retried = await RequestTransferAsync();
+        for (var deadline = DateTime.UtcNow.AddSeconds(5); retried.StatusCode == HttpStatusCode.TooManyRequests && DateTime.UtcNow < deadline;)
+        {
+            await Task.Delay(100, Token);
+            retried = await RequestTransferAsync();
+        }
         Assert.Equal(HttpStatusCode.Created, retried.StatusCode);
         Assert.False(retried.Headers.Contains("Idempotent-Replayed")); // nothing to replay: this is the first time it ran
     }
@@ -231,7 +332,6 @@ public sealed class RateLimitingTests(ApiFactory factory)
     [Fact]
     public void Every_endpoint_names_a_policy_except_the_liveness_check()
     {
-        string[] policies = [RateLimitPolicies.SignIn, RateLimitPolicies.Docs, RateLimitPolicies.Reads, RateLimitPolicies.Inbox, RateLimitPolicies.Verify, RateLimitPolicies.Writes];
         var endpoints = factory.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>().ToList();
         Assert.NotEmpty(endpoints);
 
@@ -241,7 +341,7 @@ public sealed class RateLimitingTests(ApiFactory factory)
             if (endpoint.RoutePattern.RawText == "/api/v1/health/live")
                 Assert.True(endpoint.Metadata.GetMetadata<DisableRateLimitingAttribute>() is not null && policy is null, endpoint.DisplayName);
             else
-                Assert.True(policy is not null && policies.Contains(policy), $"{endpoint.DisplayName} names no known rate-limit policy");
+                Assert.True(policy is not null && RateLimitPolicies.All.Contains(policy), $"{endpoint.DisplayName} names no known rate-limit policy");
         }
     }
 

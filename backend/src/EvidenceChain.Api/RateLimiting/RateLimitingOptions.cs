@@ -32,11 +32,11 @@ public sealed class RateLimitingOptions
     /// <summary>Custody writes by everyone together: signing in takes only a name, so anyone can write as all 11 users.</summary>
     public BucketOptions AllWrites { get; set; } = new() { TokenLimit = 30, TokensPerPeriod = 1, ReplenishmentPeriod = TimeSpan.FromSeconds(1) };
 
-    /// <summary>Text searches running at once on this instance; a few more wait their turn, the work takes milliseconds.</summary>
-    public GateOptions SearchesAtOnce { get; set; } = new() { PermitLimit = 4, QueueLimit = 8 };
+    /// <summary>Text searches running at once on this instance; one more is turned away for a second, the work takes milliseconds.</summary>
+    public GateOptions SearchesAtOnce { get; set; } = new() { PermitLimit = 4 };
 
     /// <summary>Chain verifications running at once on this instance.</summary>
-    public GateOptions VerificationsAtOnce { get; set; } = new() { PermitLimit = 2, QueueLimit = 4 };
+    public GateOptions VerificationsAtOnce { get; set; } = new() { PermitLimit = 2 };
 
     internal IEnumerable<BucketOptions> Buckets => [SignIn, Docs, Reads, Search, Verify, Writes, AllWrites];
 
@@ -44,7 +44,7 @@ public sealed class RateLimitingOptions
 
     internal static bool IsValid(RateLimitingOptions options) =>
         options.Buckets.All(b => b.TokenLimit > 0 && b.TokensPerPeriod > 0 && b.ReplenishmentPeriod > TimeSpan.Zero)
-        && options.Gates.All(g => g.PermitLimit > 0 && g.QueueLimit >= 0);
+        && options.Gates.All(g => g.PermitLimit > 0);
 }
 
 /// <summary>A token bucket: TokenLimit requests at once, then TokensPerPeriod more every ReplenishmentPeriod.</summary>
@@ -57,10 +57,8 @@ public sealed class BucketOptions
     public TimeSpan ReplenishmentPeriod { get; set; }
 }
 
-/// <summary>At most PermitLimit requests running at once, and QueueLimit more waiting in line.</summary>
+/// <summary>At most PermitLimit requests running at once; no line, so a request is never held while it waits.</summary>
 public sealed class GateOptions
 {
     public int PermitLimit { get; set; }
-
-    public int QueueLimit { get; set; }
 }
