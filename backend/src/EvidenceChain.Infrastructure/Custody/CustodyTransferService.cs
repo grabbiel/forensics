@@ -98,9 +98,10 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
     private async Task<TransferOutcome> RequestOnceAsync(TransferRequest request, Actor requester, Guid key, byte[] fingerprint, CancellationToken cancellationToken)
     {
         db.ChangeTracker.Clear(); // a retry starts from what is committed
+        if (await ReplayRequestAsync(requester, key, fingerprint, cancellationToken) is { } commited)
+            return commited;
         var evidenceId = await db.Evidence.Where(e => e.Code == request.EvidenceCode).Select(e => (long?)e.EvidenceId).SingleOrDefaultAsync(cancellationToken)
             ?? throw new InvalidRequestException("evidenceCode", "No evidence has that code.");
-
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var evidence = await LockEvidenceAsync(evidenceId, cancellationToken);
         // After the lock: a duplicate sent in parallel waits here and then finds the first one's transfer.
