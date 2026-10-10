@@ -2,6 +2,12 @@ import { useCallback } from 'react'
 import { useLocation, useNavigate, useNavigation } from 'react-router'
 import { useRouterNow } from './useRouterNow'
 
+/**
+ * History state on "Quitar filtros". It clears the search too, so the header search box drops what was typed and not
+ * yet sent, as it does on Back or Forward, even when no search was applied.
+ */
+export const CLEARS_FILTERS = { clearsFilters: true }
+
 /** Search string of the pending navigation when it stays on this page, else of the current URL. */
 export function usePendingSearch(): string {
   const location = useLocation()

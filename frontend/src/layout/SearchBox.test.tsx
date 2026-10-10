@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { createMemoryRouter, Outlet, type InitialEntry, type LoaderFunctionArgs } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { CLEARS_FILTERS } from '../lib/useUpdateSearch'
 import { DEBOUNCE_MS, SearchBox } from './SearchBox'
 
 const code = 'LOG202609110007'
@@ -231,6 +232,62 @@ describe('SearchBox', () => {
 
     expect(url(router.state.location)).toBe('/?q=b')
     expect(input).toHaveValue('b')
+  })
+
+  describe('when "Quitar filtros" clears an inbox with no search', () => {
+    const clear = (router: ReturnType<typeof renderSearch>['router']) => router.navigate('/', { state: CLEARS_FILTERS })
+
+    it('drops what was typed and not yet sent once the clear lands', async () => {
+      const { router, input } = renderSearch(['/?type=LOG'])
+
+      typeInto(input, 'vpn')
+      await act(() => clear(router))
+      await advance(DEBOUNCE_MS * 2)
+
+      expect(url(router.state.location)).toBe('/')
+      expect(input).toHaveValue('')
+    })
+
+    it('lets the clear win over a pause that ends while it loads', async () => {
+      const { router, loads, hold, input } = renderSearch(['/?type=LOG'])
+      const release = hold('inbox')
+
+      typeInto(input, 'vpn')
+      act(() => void clear(router))
+      await advance(DEBOUNCE_MS)
+      await act(async () => release())
+
+      expect(url(router.state.location)).toBe('/')
+      expect(loads).toEqual(['/'])
+      expect(input).toHaveValue('')
+    })
+
+    it('lets it win too when it lands just as the pause ends, before React has rendered it', async () => {
+      const { router, loads, hold, input } = renderSearch(['/?type=LOG'])
+      const release = hold('inbox')
+
+      typeInto(input, 'vpn')
+      await advance(DEBOUNCE_MS - 1)
+      await act(async () => {
+        void clear(router)
+        release() // the clear lands; React renders it in a transition, once the act is over
+        await vi.advanceTimersByTimeAsync(1)
+      })
+
+      expect(url(router.state.location)).toBe('/')
+      expect(loads).toEqual(['/'])
+      expect(input).toHaveValue('')
+    })
+
+    it('searches as usual once the clear is shown', async () => {
+      const { router, input } = renderSearch(['/?type=LOG'])
+
+      await act(() => clear(router))
+      typeInto(input, 'vpn')
+      await advance(DEBOUNCE_MS)
+
+      expect(url(router.state.location)).toBe('/?q=vpn')
+    })
   })
 
   describe('on any other page', () => {

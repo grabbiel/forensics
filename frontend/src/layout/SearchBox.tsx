@@ -15,6 +15,9 @@ const SENT = { sentBySearchBox: true }
 const sentByBox = (location: Location, action: NavigationType | undefined) =>
   action !== NavigationType.Pop && location.state?.sentBySearchBox === true
 
+/** Whether `location` came from "Quitar filtros", which wins over a search typed and not yet sent. */
+const clearsFilters = (location: Location) => location.state?.clearsFilters === true
+
 /** A visit to a page: its history key and its URL, since the browser keys a fresh load and every #fragment "default". */
 const visitOf = ({ key, pathname, search, hash }: Location) => `${key} ${pathname}${search}${hash}`
 
@@ -51,8 +54,8 @@ export function SearchBox() {
   const seen = useRef(visitOf(location))
 
   // Adopt URL changes this box didn't make (Back/Forward, "Quitar filtros", another page) and drop any pending write.
-  // The inbox's own filter changes keep the box's `q`, so a pending write builds on them. Back or Forward wins even
-  // when it shows the same `q`, so it also beats a search sent from another page.
+  // The inbox's other filter changes keep the box's `q`, so a pending write builds on them. Back, Forward and "Quitar
+  // filtros" win even when they show the same `q`, so Back and Forward also beat a search sent from another page.
   useEffect(() => {
     const visit = visitOf(location)
     seen.current = visit
@@ -60,7 +63,7 @@ export function SearchBox() {
     const caughtUp = visit === actedOn.current
     actedOn.current = undefined
     if (caughtUp) return
-    if (shown === written.current && navigationType !== NavigationType.Pop) return
+    if (shown === written.current && navigationType !== NavigationType.Pop && !clearsFilters(location)) return
     written.current = shown
     window.clearTimeout(timer.current)
     setValue(urlQuery)
@@ -70,7 +73,8 @@ export function SearchBox() {
 
   /**
    * Whether a pause that ends now may search: on the inbox while the box is in step with it, or on the way to a search
-   * the box sent. A row, a link, Back or Forward the user chose wins, even one React has not rendered yet.
+   * the box sent. A row, a link, Back, Forward or "Quitar filtros" the user chose wins, even one React has not rendered
+   * yet.
    */
   function mayRefine() {
     const now = routerNow()
@@ -79,8 +83,10 @@ export function SearchBox() {
     const action = pending ? now.navigation.historyAction : now.historyAction
     if (heading.pathname !== INBOX) return false
     if (sentByBox(heading, action)) return true
-    // A Back or Forward on its way, or landed but not yet rendered, wins: the box adopts it once React shows it.
-    if (action === NavigationType.Pop && (pending || visitOf(now.location) !== seen.current)) return false
+    // A Back, Forward or "Quitar filtros" on its way, or landed but not yet rendered, wins: the box adopts it once React
+    // shows it.
+    const wins = action === NavigationType.Pop || clearsFilters(heading)
+    if (wins && (pending || visitOf(now.location) !== seen.current)) return false
     // In step with where the inbox is going: its own filter changes carry the box's `q`; a clear or a link drops it.
     return shownAt(INBOX, queryAt(heading)) === written.current
   }
