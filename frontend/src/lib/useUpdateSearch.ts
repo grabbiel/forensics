@@ -2,11 +2,11 @@ import { useCallback } from 'react'
 import { useLocation, useNavigate, useNavigation } from 'react-router'
 import { useRouterNow } from './useRouterNow'
 
-/** Search string of the pending navigation, else of the current URL. */
+/** Search string of the pending navigation when it stays on this page, else of the current URL. */
 export function usePendingSearch(): string {
   const location = useLocation()
-  const navigation = useNavigation()
-  return (navigation.location ?? location).search
+  const pending = useNavigation().location
+  return (pending?.pathname === location.pathname ? pending : location).search
 }
 
 /**

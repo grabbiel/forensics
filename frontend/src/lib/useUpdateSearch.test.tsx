@@ -3,17 +3,21 @@ import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, Outlet } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
 import { describe, expect, it } from 'vitest'
-import { useUpdateSearch } from './useUpdateSearch'
+import { usePendingSearch, useUpdateSearch } from './useUpdateSearch'
 
-/** A tab and a page link above a stand-in inbox and an evidence page whose loader waits until released. */
-function renderEditor(initialEntries: string[]) {
+/**
+ * Tabs and the search they show, above a stand-in inbox and an evidence page whose loader waits until released; the
+ * inbox's waits too when `holdInbox`.
+ */
+function renderEditor(initialEntries: string[], holdInbox = false) {
   let release = () => {}
-  const evidenceLoads = new Promise<void>((resolve) => (release = resolve))
+  const released = new Promise<void>((resolve) => (release = resolve))
   function Tabs() {
     const updateSearch = useUpdateSearch()
     const set = (name: string, value: string) => updateSearch((params) => params.set(name, value))
     return (
       <>
+        <output>{usePendingSearch()}</output>
         <button type="button" onClick={() => set('type', 'CSV')}>
           CSV
         </button>
@@ -40,8 +44,8 @@ function renderEditor(initialEntries: string[]) {
           </>
         ),
         children: [
-          { id: 'inbox', index: true, loader: () => null },
-          { id: 'evidence', path: 'evidence/:id', loader: () => evidenceLoads.then(() => null) },
+          { id: 'inbox', index: true, loader: () => (holdInbox ? released.then(() => null) : null) },
+          { id: 'evidence', path: 'evidence/:id', loader: () => released.then(() => null) },
         ],
       },
     ],
@@ -70,5 +74,16 @@ describe('useUpdateSearch', () => {
     await act(async () => release())
 
     expect(url(router.state.location)).toBe('/?q=fire&status=Valid&type=CSV')
+  })
+
+  it('shows a change to this page at once, and keeps showing this page while another one loads', async () => {
+    const { router, release } = renderEditor(['/?type=LOG'], true)
+
+    await userEvent.click(screen.getByRole('button', { name: 'CSV' }))
+    expect(screen.getByRole('status')).toHaveTextContent('?type=CSV')
+    act(() => void router.navigate('/evidence/LOG202609110007')) // a row, still loading
+    expect(screen.getByRole('status')).toHaveTextContent('?type=LOG')
+
+    await act(async () => release())
   })
 })
