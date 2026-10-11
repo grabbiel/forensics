@@ -5,6 +5,7 @@ import { createMemoryRouter } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
 import { describe, expect, it, vi } from 'vitest'
 import type { ChainEvent, EvidenceDetail, EvidenceSummary, TransferView } from './api/evidence'
+import type { NotificationItem } from './api/notifications'
 import { forgetPeople } from './api/people'
 import { clearAllIntents } from './features/transfers/pendingIntent'
 import { DEBOUNCE_MS } from './layout/SearchBox'
@@ -435,5 +436,52 @@ describe('paging the inbox', () => {
     await waitFor(() => expect(shownCodes()).toEqual(['LOG202610060003', 'LOG202610060004']))
     expect(router.state.location.search).toBe('?cursor=p2')
     expect(screen.getByRole('heading', { name: 'Bandeja de evidencias' })).toHaveFocus()
+  })
+})
+
+describe('a custodian told of a transfer', () => {
+  it('sees the count in the header, reads the request, opens the evidence from it and accepts it there', async () => {
+    signInAs('Custodio') // Diego Salas, the recipient
+    const db: { detail: EvidenceDetail } = { detail: { ...detail, pendingTransfer: pendingToDiego } }
+    const reads = evidenceApi(db)
+    const told: NotificationItem = {
+      notificationId: 31, kind: 'TransferRequested', createdAtUtc: '2026-10-08T10:00:00Z', readAtUtc: null, evidenceCode: code,
+      transferId: 7, requestedBy: lucia, from: nuria, to: diego, reason: 'Peritaje externo', decisionNotes: null,
+    }
+    const unread = () => (told.readAtUtc ? 0 : 1)
+    let polls = 0
+    server.use(
+      http.get('/api/v1/evidence', () => HttpResponse.json({ items: [summary(code, 'Log del firewall')], nextCursor: null, prevCursor: null })),
+      http.get('/api/v1/notifications/unread-count', () => {
+        polls++
+        return HttpResponse.json({ unreadCount: unread() })
+      }),
+      http.get('/api/v1/notifications', () => HttpResponse.json({ items: [told], nextCursor: null, unreadCount: unread() })),
+      http.post('/api/v1/notifications/31/read', () => {
+        told.readAtUtc = '2026-10-09T09:00:00Z'
+        return new HttpResponse(null, { status: 204 })
+      }),
+      http.post('/api/v1/custody-transfers/7/accept', ({ request }) => {
+        const refused = refuseBadHeaders(request, true)
+        if (refused) return refused
+        db.detail = { ...detail, currentCustodian: diego, pendingTransfer: null }
+        return transferResponse({ ...pendingToDiego, status: 'Accepted' }, 200)
+      }),
+    )
+    const { router } = renderAt('/')
+
+    await userEvent.click(await screen.findByRole('link', { name: 'Notificaciones, 1 sin leer' }))
+    const item = await screen.findByRole('link', { name: 'No leída. Lucía Ferrer solicitó transferirte LOG202609110007, ahora en custodia de Nuria Paredes.' })
+    await userEvent.click(item)
+
+    await screen.findByRole('heading', { level: 1, name: code })
+    expect(router.state.location.pathname).toBe(`/evidence/${code}`)
+    expect(await screen.findByRole('link', { name: 'Notificaciones' })).toBeInTheDocument()
+    expect(reads.detail).toBe(1)
+
+    const before = polls
+    await userEvent.click(screen.getByRole('button', { name: 'Aceptar custodia' }))
+    await waitFor(() => expect(currentCustodian()).toHaveTextContent('Diego Salas'))
+    await waitFor(() => expect(polls).toBeGreaterThan(before)) // the header asks again after a write
   })
 })
