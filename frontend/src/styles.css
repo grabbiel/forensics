@@ -979,6 +979,63 @@ svg {
   border-top: 1px solid var(--line-soft);
 }
 
+/* ---- Notifications ---- */
+
+.notes__mark-all {
+  margin-left: auto;
+}
+
+.notes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.note {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.note--unread {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.note__icon {
+  margin-top: 1px;
+  color: var(--text-2);
+}
+
+.note__body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.note__link {
+  color: var(--text);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.note__link:hover {
+  text-decoration: underline;
+}
+
+.note__detail {
+  margin: 0;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.note__time {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
 /* ---- Verification ---- */
 
 .verify {

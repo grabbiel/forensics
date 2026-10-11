@@ -3,7 +3,7 @@ import { ApiError } from '../api/client'
 import { clearSession, getSession, type Session } from './session'
 
 /** Pages a user can be sent back to after signing in: never /login, /logout or a resource route. */
-const PAGE = /^\/(?:evidence\/[^/?#]+)?(?:[?#].*)?$/
+const PAGE = /^\/(?:evidence\/[^/?#]+|notifications)?(?:[?#].*)?$/
 
 /** /login, remembering the page to come back to. */
 function loginPath(back: string): string {
