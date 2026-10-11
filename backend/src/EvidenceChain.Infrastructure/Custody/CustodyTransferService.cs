@@ -4,6 +4,7 @@ using EvidenceChain.Application.Idempotency;
 using EvidenceChain.Domain.Catalog;
 using EvidenceChain.Domain.Custody;
 using EvidenceChain.Domain.Integrity;
+using EvidenceChain.Domain.Notifications;
 using EvidenceChain.Domain.People;
 using EvidenceChain.Infrastructure.People;
 using EvidenceChain.Infrastructure.Persistence;
@@ -14,7 +15,7 @@ namespace EvidenceChain.Infrastructure.Custody;
 
 /// <summary>
 /// Each write is one transaction under the retrying execution strategy: the transfer change, its signed event, the
-/// evidence head and the inbox projection, with the idempotency key and request fingerprint stored alongside.
+/// evidence head, the inbox projection and the notifications, with the idempotency key and request fingerprint stored alongside.
 /// Every write first takes an update lock on its evidence's row, so writes to one evidence run one after another and
 /// everything read after the lock is the latest committed state. Clients still get optimistic concurrency: If-Match
 /// decides the 409, and no lock is held between a client's read and its write. A retry of a write that already
@@ -135,7 +136,7 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
         await db.SaveChangesAsync(cancellationToken); // assigns the id its event cites
 
         db.CustodyEvents.Add(CustodyLedger.Append(keys, evidence, transfer, CustodyEventKind.TransferRequested, requester.UserId, now));
-        Project(await InboxRowAsync(evidence, cancellationToken), evidence, transfer, now, people);
+        Follow(await InboxRowAsync(evidence, cancellationToken), evidence, transfer, now, people);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new Written(transfer, evidence.Code, Replayed: false);
@@ -176,7 +177,7 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
 
         var kind = command == TransferCommand.Accept ? CustodyEventKind.TransferAccepted : CustodyEventKind.TransferRejected;
         db.CustodyEvents.Add(CustodyLedger.Append(keys, evidence, transfer, kind, decider.UserId, now));
-        Project(await InboxRowAsync(evidence, cancellationToken), evidence, transfer, now, people);
+        Follow(await InboxRowAsync(evidence, cancellationToken), evidence, transfer, now, people);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new Written(transfer, evidence.Code, Replayed: false);
@@ -219,6 +220,17 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
 
     private Task<EvidenceInboxRow> InboxRowAsync(Evidence evidence, CancellationToken cancellationToken) =>
         db.EvidenceInbox.SingleAsync(r => r.EvidenceId == evidence.EvidenceId, cancellationToken);
+
+    /// <summary>
+    /// The projections follow the write in the same transaction, so they exist if and only if it commits: the inbox row,
+    /// and one notification per person the step concerns. Only adds to the change tracker: the caller's last save sends
+    /// them with the event. A failed notification insert fails the custody write, as a failed inbox update does.
+    /// </summary>
+    private void Follow(EvidenceInboxRow inbox, Evidence evidence, CustodyTransfer transfer, DateTime occurredAtUtc, PeopleIndex people)
+    {
+        Project(inbox, evidence, transfer, occurredAtUtc, people);
+        db.Notifications.AddRange(Notification.For(transfer, people.Supervisors));
+    }
 
     /// <summary>The EvidenceInbox projection follows the write in the same transaction.</summary>
     private static void Project(EvidenceInboxRow inbox, Evidence evidence, CustodyTransfer transfer, DateTime occurredAtUtc, PeopleIndex people)
