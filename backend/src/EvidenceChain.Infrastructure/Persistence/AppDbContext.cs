@@ -1,5 +1,6 @@
 using EvidenceChain.Domain.Catalog;
 using EvidenceChain.Domain.Custody;
+using EvidenceChain.Domain.Notifications;
 using EvidenceChain.Domain.People;
 using EvidenceChain.Infrastructure.Persistence.ReadModels;
 using Microsoft.EntityFrameworkCore;
@@ -23,6 +24,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<CustodyTransfer> CustodyTransfers => Set<CustodyTransfer>();
 
     public DbSet<EvidenceInboxRow> EvidenceInbox => Set<EvidenceInboxRow>();
+
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     public DbSet<SeedRun> SeedRuns => Set<SeedRun>();
 
