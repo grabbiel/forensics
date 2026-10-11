@@ -66,6 +66,7 @@ export async function getJson<T>(path: string, signal?: AbortSignal): Promise<T>
 /**
  * POSTs JSON. Never retries, above all not a 409: a conflict is an answer about the current state, and repeating the
  * write would act on a version the user never saw. Retrying is the user's call, with the same Idempotency-Key.
+ * A 204 has no body: its `body` is undefined.
  */
 export async function postJson<T>(path: string, body: unknown, options: { signal?: AbortSignal; headers?: Record<string, string> } = {}): Promise<Sent<T>> {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -75,7 +76,8 @@ export async function postJson<T>(path: string, body: unknown, options: { signal
     body: JSON.stringify(body ?? {}),
   })
   if (!response.ok) throw await toApiError(response)
-  return { status: response.status, body: (await response.json()) as T, headers: response.headers }
+  const answer = response.status === 204 ? undefined : await response.json()
+  return { status: response.status, body: answer as T, headers: response.headers }
 }
 
 /** `signal`, also aborted when `timeout` fires; a fallback where AbortSignal.any is missing (Safari < 17.4). */

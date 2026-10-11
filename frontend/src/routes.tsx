@@ -8,6 +8,7 @@ import { EvidencePage } from './features/evidence/EvidencePage'
 import { evidenceLoader, verifyLoader } from './features/evidence/evidenceLoader'
 import { InboxPage } from './features/inbox/InboxPage'
 import { inboxLoader } from './features/inbox/inboxLoader'
+import { unreadLoader } from './features/notifications/notificationRoutes'
 import { decisionAction, requestTransferAction } from './features/transfers/transferActions'
 import { AppShell, DetailLoading, PageLoading } from './layout/AppShell'
 
@@ -36,6 +37,8 @@ export const routes: RouteObject[] = [
   { path: '/evidence/:id/transfer', action: requestTransferAction },
   { path: '/transfers/:transferId/accept', action: decisionAction('accept') },
   { path: '/transfers/:transferId/reject', action: decisionAction('reject') },
+  // The unread GET has no side effect, so it keeps the default revalidation: that refreshes the bell after any write.
+  { path: '/notifications/unread', loader: unreadLoader },
 
   {
     path: '/',
