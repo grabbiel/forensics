@@ -1,4 +1,4 @@
-import { ArrowRight, LinkSimple, SealCheck, ShieldCheck, UserCircle } from '@phosphor-icons/react'
+import { ArrowRight, CircleNotch, LinkSimple, SealCheck, ShieldCheck, UserCircle } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import type { FormEvent } from 'react'
 import { Form, useActionData, useNavigation, useSearchParams } from 'react-router'
@@ -19,7 +19,8 @@ export function LoginPage() {
   const navigation = useNavigation()
   // Busy from the submission until the page it leads to has loaded, not only while the token is requested.
   const busy = navigation.state !== 'idle' && (navigation.formAction?.startsWith('/login') ?? false)
-  const pendingUser = busy ? String(navigation.formData?.get('userName') ?? '') : null
+  const pendingUser = busy ? String(navigation.formData?.get('userName') ?? '').trim() : null
+  const pendingPersona = DEMO_USERS.find((user) => user.userName === pendingUser)
   // After a 429, another attempt before the server's wait is over would only be refused again.
   const waited = useWaited(result?.retryAfterSeconds, result)
   const held = busy || !waited
@@ -38,6 +39,7 @@ export function LoginPage() {
       </header>
 
       <main id="main" className="panel login__panel" aria-labelledby="login-title">
+        {busy && <div className="progress" aria-hidden="true" />}
         <h1 id="login-title" className="panel__title">
           Iniciar sesión
         </h1>
@@ -50,35 +52,53 @@ export function LoginPage() {
         )}
         {/* Outside the alert, so the end of a wait is said politely instead of the alert again. */}
         <p className="visually-hidden" role="status">
-          {result?.retryAfterSeconds !== undefined && waited ? READY_SENTENCE : ''}
+          {busy
+            ? `Iniciando sesión como ${pendingPersona?.displayName ?? pendingUser}…`
+            : result?.retryAfterSeconds !== undefined && waited
+              ? READY_SENTENCE
+              : ''}
         </p>
 
         <ul className="personas">
-          {DEMO_USERS.map(({ userName, displayName, role, can, icon: PersonaIcon }) => (
-            <li key={userName}>
-              <Form method="post" action={action} onSubmit={holdWhileHeld}>
-                <input type="hidden" name="userName" value={userName} />
-                <button type="submit" className={waited ? 'persona' : 'persona persona--waiting'} aria-disabled={held} disabled={busy && pendingUser !== userName}>
-                  <PersonaIcon size={28} aria-hidden="true" />
-                  <span className="persona__text">
-                    <span className="persona__name">{displayName}</span>
-                    <span className="persona__role">{role}</span>
-                    <span className="persona__can">{can}</span>
-                  </span>
-                  <ArrowRight size={18} aria-hidden="true" className="persona__go" />
-                  {pendingUser === userName && <span className="visually-hidden"> (entrando…)</span>}
-                </button>
-              </Form>
-            </li>
-          ))}
+          {DEMO_USERS.map(({ userName, displayName, role, can, icon: PersonaIcon }) => {
+            const signingIn = pendingPersona?.userName === userName
+            const className = signingIn ? 'persona persona--signing-in' : waited ? 'persona' : 'persona persona--waiting'
+            return (
+              <li key={userName}>
+                <Form method="post" action={action} onSubmit={holdWhileHeld}>
+                  <input type="hidden" name="userName" value={userName} />
+                  <button type="submit" className={className} aria-disabled={held} disabled={busy && !signingIn}>
+                    <PersonaIcon size={28} aria-hidden="true" />
+                    <span className="persona__text">
+                      <span className="persona__name">{displayName}</span>
+                      <span className="persona__role">{role}</span>
+                      <span className="persona__can">{signingIn ? 'Iniciando sesión…' : can}</span>
+                    </span>
+                    {signingIn ? (
+                      <CircleNotch size={20} aria-hidden="true" className="persona__go spinner" />
+                    ) : (
+                      <ArrowRight size={18} aria-hidden="true" className="persona__go" />
+                    )}
+                  </button>
+                </Form>
+              </li>
+            )
+          })}
         </ul>
 
-        <Form method="post" action={action} className="login__other" onSubmit={holdWhileHeld}>
+        <Form method="post" action={action} className={busy && pendingPersona ? 'login__other login__other--held' : 'login__other'} onSubmit={holdWhileHeld}>
           <label htmlFor="other-user">Otra persona del equipo</label>
           <div className="login__other-row">
             <input id="other-user" name="userName" className="field" placeholder="p. ej. nuria.paredes" autoComplete="username" spellCheck={false} required />
             <button type="submit" className="button button--ghost" aria-disabled={held}>
-              Entrar
+              {busy && !pendingPersona ? (
+                <>
+                  <CircleNotch size={16} aria-hidden="true" className="spinner" />
+                  Entrando…
+                </>
+              ) : (
+                'Entrar'
+              )}
             </button>
           </div>
         </Form>

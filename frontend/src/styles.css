@@ -195,6 +195,17 @@ svg {
   }
 }
 
+/* A turning icon for work in progress; with reduced motion it stands still and its text says the rest. */
+.spinner {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
 .brand {
   justify-self: start;
   display: inline-flex;
@@ -644,6 +655,12 @@ svg {
   margin-bottom: 16px;
 }
 
+/* The page-load bar, along the panel's top edge while a sign-in runs. */
+.login__panel > .progress {
+  inset: 0 0 auto;
+  border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+}
+
 .personas {
   display: grid;
   gap: 8px;
@@ -676,6 +693,21 @@ svg {
 .persona:disabled {
   opacity: 0.55;
   cursor: progress;
+}
+
+/* The persona being signed in as: held in its hover colours with a ring, until the next page has loaded. */
+.persona--signing-in,
+.persona--signing-in:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent);
+  cursor: progress;
+}
+
+.persona--signing-in .persona__can,
+.persona--signing-in .persona__go {
+  color: var(--accent-fill);
+  font-weight: 700;
 }
 
 /* Held until a 429's wait is over: dimmed like a disabled persona, yet still focusable. */
@@ -725,6 +757,11 @@ svg {
   border-top: 1px solid var(--line-soft);
   color: var(--text-2);
   font-size: 13px;
+}
+
+/* On hold while a persona signs in, dimmed like the other personas. */
+.login__other--held {
+  opacity: 0.55;
 }
 
 .login__other-row {

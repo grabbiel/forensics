@@ -209,9 +209,37 @@ describe('routes and sign-in', () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/v1/evidence'))).toBe(true))
 
     expect(persona).toHaveAttribute('aria-disabled', 'true')
+    expect(persona).toHaveTextContent('Iniciando sesión…')
+    expect(screen.getByRole('status')).toHaveTextContent('Iniciando sesión como Diego Salas…')
     expect(screen.getByRole('button', { name: /Lucía Ferrer/ })).toBeDisabled()
     await userEvent.click(persona)
     expect(fetchMock.mock.calls.filter(([url]) => String(url) === '/api/v1/auth/token')).toHaveLength(1)
+
+    await act(async () => release())
+    expect(await screen.findByRole('heading', { name: 'Bandeja de evidencias' })).toBeInTheDocument()
+  })
+
+  it('says on the button it was sent with that a typed-in person is signing in', async () => {
+    let release: () => void = () => {}
+    const nuria = { id: 5, userName: 'nuria.paredes', displayName: 'Nuria Paredes', role: 'Custodio' }
+    const fetchMock = fakeApi((url, init) =>
+      url === '/api/v1/auth/token' && String(init?.body).includes(nuria.userName)
+        ? json(200, { accessToken: 'token-nuria', tokenType: 'Bearer', expiresAtUtc: new Date(Date.now() + 3_600_000).toISOString(), user: nuria })
+        : undefined,
+    )
+    const inboxReady = new Promise<void>((resolve) => (release = resolve))
+    const base = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation(async (input, init) => {
+      if (String(input).startsWith('/api/v1/evidence')) await inboxReady
+      return base(input, init)
+    })
+    renderAt('/login')
+
+    await userEvent.type(await screen.findByLabelText('Otra persona del equipo'), 'nuria.paredes{Enter}')
+
+    expect(await screen.findByRole('button', { name: 'Entrando…' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('status')).toHaveTextContent('Iniciando sesión como nuria.paredes…')
+    expect(screen.getByRole('button', { name: /Diego Salas/ })).toBeDisabled()
 
     await act(async () => release())
     expect(await screen.findByRole('heading', { name: 'Bandeja de evidencias' })).toBeInTheDocument()
