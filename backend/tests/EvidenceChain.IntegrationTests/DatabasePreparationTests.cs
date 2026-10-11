@@ -72,6 +72,39 @@ public sealed class DatabasePreparationTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task App_login_inserts_notifications_and_marks_them_read_but_changes_nothing_else()
+    {
+        Assert.SkipWhen(factory.SkipReason is not null, factory.SkipReason ?? "");
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var connection = await OpenAsAppAsync(cancellationToken);
+        // Rolled back at the end, so the shared database keeps no transfer.
+        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken);
+
+        await using (var insert = new SqlCommand("""
+            DECLARE @transfer bigint;
+            INSERT dbo.CustodyTransfers (EvidenceId, FromCustodianId, ToCustodianId, RequestedById, RequestedAtUtc, Reason, Status, ClientRequestId, RequestFingerprint)
+            VALUES ((SELECT MIN(EvidenceId) FROM dbo.Evidence), 4, 1, 1, SYSUTCDATETIME(), N'Prueba', 'Pending', NEWID(), CRYPT_GEN_RANDOM(32));
+            SET @transfer = SCOPE_IDENTITY();
+            INSERT dbo.Notifications (RecipientId, TransferId, Kind, CreatedAtUtc) VALUES (4, @transfer, 'TransferRequested', SYSUTCDATETIME());
+            UPDATE dbo.Notifications SET ReadAtUtc = SYSUTCDATETIME() WHERE TransferId = @transfer;
+            SELECT COUNT(*) FROM dbo.Notifications WHERE TransferId = @transfer AND ReadAtUtc IS NOT NULL;
+            """, connection, transaction))
+            Assert.Equal(1, await insert.ExecuteScalarAsync(cancellationToken));
+
+        foreach (var (denied, error) in new[]
+        {
+            ("UPDATE dbo.Notifications SET RecipientId = RecipientId;", 230),
+            ("UPDATE dbo.Notifications SET Kind = Kind;", 230),
+            ("DELETE FROM dbo.Notifications;", 229),
+        })
+        {
+            await using var command = new SqlCommand(denied, connection, transaction);
+            Assert.Equal(error, (await Assert.ThrowsAsync<SqlException>(() => command.ExecuteNonQueryAsync(cancellationToken))).Number);
+        }
+        await transaction.RollbackAsync(cancellationToken);
+    }
+
+    [Fact]
     public async Task App_login_is_denied_rewriting_custody_history()
     {
         Assert.SkipWhen(factory.SkipReason is not null, factory.SkipReason ?? "");

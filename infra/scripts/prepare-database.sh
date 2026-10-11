@@ -63,6 +63,8 @@ GRANT UPDATE ON dbo.Evidence (HeadMac, EventCount, CurrentCustodianId) TO [${api
 GRANT UPDATE ON dbo.EvidenceInbox (EventCount, LastEventAtUtc, CurrentCustodianId, CurrentCustodianName,
     PendingTransferId, PendingToCustodianId, PendingSinceUtc,
     IntegrityStatus, IntegrityCheckedAtUtc, IntegrityCheckedThroughSeq) TO [${api_name}];
+GRANT INSERT ON dbo.Notifications TO [${api_name}];
+GRANT UPDATE ON dbo.Notifications (ReadAtUtc) TO [${api_name}];
 -- Explicit DENY outlives any later write grant: custody history is never rewritten.
 DENY UPDATE, DELETE ON dbo.CustodyEvents TO [${api_name}];
 -- Multi-statement reads run in SNAPSHOT transactions; Azure SQL allows them by default.
