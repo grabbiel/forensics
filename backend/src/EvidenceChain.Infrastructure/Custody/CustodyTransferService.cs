@@ -113,6 +113,8 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
             return new Written(committed, request.EvidenceCode, Replayed: true);
         var evidenceId = await db.Evidence.Where(e => e.Code == request.EvidenceCode).Select(e => (long?)e.EvidenceId).SingleOrDefaultAsync(cancellationToken)
             ?? throw new InvalidRequestException("evidenceCode", "No evidence has that code.");
+        // Users only change with the seed, so they may be read before the lock: a cache miss never queries under it.
+        var people = await peopleIndex.GetAsync(cancellationToken);
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var evidence = await LockEvidenceAsync(evidenceId, cancellationToken);
@@ -133,7 +135,6 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
         await db.SaveChangesAsync(cancellationToken); // assigns the id its event cites
 
         db.CustodyEvents.Add(CustodyLedger.Append(keys, evidence, transfer, CustodyEventKind.TransferRequested, requester.UserId, now));
-        var people = await peopleIndex.GetAsync(cancellationToken);
         Project(await InboxRowAsync(evidence, cancellationToken), evidence, transfer, now, people);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -150,6 +151,7 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
         // A retry of a decision that already committed answers from it, without waiting for the evidence's lock.
         if (stored.DecisionKey == key)
             return new Written(SameDecision(stored, decider, key, fingerprint), EvidenceCode: null, Replayed: true);
+        var people = await peopleIndex.GetAsync(cancellationToken);
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         // The evidence first, as requests do; then the transfer, which no other write can be changing now.
@@ -174,7 +176,6 @@ internal sealed class CustodyTransferService(AppDbContext db, IntegrityKeyRing k
 
         var kind = command == TransferCommand.Accept ? CustodyEventKind.TransferAccepted : CustodyEventKind.TransferRejected;
         db.CustodyEvents.Add(CustodyLedger.Append(keys, evidence, transfer, kind, decider.UserId, now));
-        var people = await peopleIndex.GetAsync(cancellationToken);
         Project(await InboxRowAsync(evidence, cancellationToken), evidence, transfer, now, people);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
