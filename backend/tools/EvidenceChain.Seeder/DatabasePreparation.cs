@@ -57,7 +57,8 @@ internal static class DatabasePreparation
 
             -- Exactly the writes custody needs, by column: requests insert a transfer and decisions fill in its decision;
             -- events are appended; the evidence's head and holder follow them; the inbox projection follows every write
-            -- and records verification verdicts.
+            -- and records verification verdicts; each write tells the people it concerns, who mark their own
+            -- notifications read.
             SET @sql = REPLACE(N'
                 GRANT INSERT ON dbo.CustodyTransfers TO {app};
                 GRANT UPDATE ON dbo.CustodyTransfers (Status, DecidedAtUtc, DecidedById, DecisionNotes, DecisionKey, DecisionFingerprint) TO {app};
@@ -65,7 +66,9 @@ internal static class DatabasePreparation
                 GRANT UPDATE ON dbo.Evidence (HeadMac, EventCount, CurrentCustodianId) TO {app};
                 GRANT UPDATE ON dbo.EvidenceInbox (EventCount, LastEventAtUtc, CurrentCustodianId, CurrentCustodianName,
                     PendingTransferId, PendingToCustodianId, PendingSinceUtc,
-                    IntegrityStatus, IntegrityCheckedAtUtc, IntegrityCheckedThroughSeq) TO {app};', N'{app}', @quotedLogin);
+                    IntegrityStatus, IntegrityCheckedAtUtc, IntegrityCheckedThroughSeq) TO {app};
+                GRANT INSERT ON dbo.Notifications TO {app};
+                GRANT UPDATE ON dbo.Notifications (ReadAtUtc) TO {app};', N'{app}', @quotedLogin);
             EXEC sys.sp_executesql @sql;
 
             -- Explicit DENY outlives any later write grant: the app can never rewrite custody history.

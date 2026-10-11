@@ -180,7 +180,8 @@ describe('routes and sign-in', () => {
   it('only follows pages of this site after sign-in', () => {
     expect(safeRedirect('/evidence/LOG1?x=1')).toBe('/evidence/LOG1?x=1')
     expect(safeRedirect('/?q=vpn')).toBe('/?q=vpn')
-    const refused = [null, '', 'https://evil.example', '//evil.example', '/\\evil.example', '/login', '/logout', '/evidence/LOG1/verify', '/transfers/7/accept']
+    expect(safeRedirect('/notifications?cursor=AQ')).toBe('/notifications?cursor=AQ')
+    const refused = [null, '', 'https://evil.example', '//evil.example', '/\\evil.example', '/login', '/logout', '/evidence/LOG1/verify', '/transfers/7/accept', '/notifications/unread', '/notifications/read', '/notificationsx']
     for (const target of refused) expect(safeRedirect(target)).toBe('/')
   })
 

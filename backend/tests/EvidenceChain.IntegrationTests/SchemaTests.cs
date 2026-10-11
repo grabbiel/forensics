@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using EvidenceChain.Domain.Catalog;
 using EvidenceChain.Domain.Custody;
+using EvidenceChain.Domain.Notifications;
 using EvidenceChain.Domain.People;
 using EvidenceChain.Infrastructure.Persistence;
 using Microsoft.Data.SqlClient;
@@ -212,6 +213,48 @@ public sealed class SchemaTests(ApiFactory factory)
              ("IX_EvidenceInbox_Custodian", "CurrentCustodianId"), ("IX_EvidenceInbox_Integrity", "IntegrityStatus")];
         var expected = keyset.SelectMany(k => page.Where(c => c != k.Key).Select(c => $"{k.Index}|{c}"));
         Assert.Equal(expected.Order(StringComparer.Ordinal), included.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task Notifications_store_exactly_the_kinds_the_domain_names_once_per_recipient_and_step()
+    {
+        await using var db = await OpenAsync();
+        var evidence = await AddEvidenceAsync(db, EvidenceTypes.Log, dailyNo: 12);
+        var transfer = await AddTransferAsync(db, evidence);
+
+        foreach (var kind in Enum.GetNames<NotificationKind>())
+            await db.Database.ExecuteSqlAsync($"INSERT dbo.Notifications (RecipientId, TransferId, Kind, CreatedAtUtc) VALUES ({Custodian}, {transfer.TransferId}, {kind}, SYSUTCDATETIME())", Token);
+        Assert.Equal(547, await SqlErrorAsync(() => db.Database.ExecuteSqlAsync(
+            $"INSERT dbo.Notifications (RecipientId, TransferId, Kind, CreatedAtUtc) VALUES ({Custodian}, {transfer.TransferId}, 'EvidenceRegistered', SYSUTCDATETIME())", Token)));
+        Assert.Equal(2601, await SqlErrorAsync(() => db.Database.ExecuteSqlAsync(
+            $"INSERT dbo.Notifications (RecipientId, TransferId, Kind, CreatedAtUtc) VALUES ({Custodian}, {transfer.TransferId}, 'TransferRequested', SYSUTCDATETIME())", Token)));
+        Assert.Equal(547, await SqlErrorAsync(() => db.Database.ExecuteSqlAsync($"DELETE dbo.CustodyTransfers WHERE TransferId = {transfer.TransferId}", Token)));
+    }
+
+    [Fact]
+    public async Task Notification_indexes_serve_the_list_and_the_unread_count()
+    {
+        await using var db = await OpenAsync();
+        var indexes = await db.Database.SqlQuery<string>($"""
+            SELECT i.name + '|' + IIF(i.is_unique = 1, 'unique', '') + '|'
+                + (SELECT STRING_AGG(c.name + IIF(ic.is_descending_key = 1, ' desc', ''), ',') WITHIN GROUP (ORDER BY ic.key_ordinal)
+                   FROM sys.index_columns ic JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+                   WHERE ic.object_id = i.object_id AND ic.index_id = i.index_id AND ic.is_included_column = 0) + '|'
+                + ISNULL((SELECT STRING_AGG(c.name, ',') WITHIN GROUP (ORDER BY c.name)
+                   FROM sys.index_columns ic JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+                   WHERE ic.object_id = i.object_id AND ic.index_id = i.index_id AND ic.is_included_column = 1), '') + '|'
+                + ISNULL(i.filter_definition, '') AS Value
+            FROM sys.indexes i
+            WHERE i.object_id = OBJECT_ID('dbo.Notifications') AND i.is_primary_key = 0
+            """).ToListAsync(Token);
+
+        Assert.Equal(
+        [
+            "IX_Notifications_Recipient||RecipientId,NotificationId desc|CreatedAtUtc,Kind,ReadAtUtc,TransferId|",
+            "IX_Notifications_TransferId||TransferId||",
+            "IX_Notifications_Unread||RecipientId||([ReadAtUtc] IS NULL)",
+            "UX_Notifications_RecipientTransferKind|unique|RecipientId,TransferId,Kind||",
+        ], indexes.Order(StringComparer.Ordinal));
     }
 
     private async Task<AppDbContext> OpenAsync()

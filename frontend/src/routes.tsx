@@ -8,6 +8,8 @@ import { EvidencePage } from './features/evidence/EvidencePage'
 import { evidenceLoader, verifyLoader } from './features/evidence/evidenceLoader'
 import { InboxPage } from './features/inbox/InboxPage'
 import { inboxLoader } from './features/inbox/inboxLoader'
+import { NotificationsPage } from './features/notifications/NotificationsPage'
+import { notificationsLoader, readAction, unreadLoader } from './features/notifications/notificationRoutes'
 import { decisionAction, requestTransferAction } from './features/transfers/transferActions'
 import { AppShell, DetailLoading, PageLoading } from './layout/AppShell'
 
@@ -17,9 +19,11 @@ const EVIDENCE_NOT_FOUND = { title: 'Evidencia no encontrada', detail: 'No exist
  * The router revalidates loaders only after successful actions. On the evidence page any answer to a write says
  * something about its current state (a 409 or 400 that it moved on, an unknown outcome that it may have), so the page
  * reads itself again after every write. Except a 429: the server turned the write away before running it, and a read
- * now would be one more request while it asks for fewer.
+ * now would be one more request while it asks for fewer. Nor after marking a notification read, which opening one does
+ * on arrival: that says nothing about any evidence.
  */
-function revalidateEvidence({ actionStatus, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
+function revalidateEvidence({ actionStatus, formAction, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
+  if (formAction?.startsWith('/notifications/')) return false
   if (actionStatus === 429) return false
   return actionStatus !== undefined || defaultShouldRevalidate
 }
@@ -36,6 +40,9 @@ export const routes: RouteObject[] = [
   { path: '/evidence/:id/transfer', action: requestTransferAction },
   { path: '/transfers/:transferId/accept', action: decisionAction('accept') },
   { path: '/transfers/:transferId/reject', action: decisionAction('reject') },
+  // The unread GET has no side effect, so it keeps the default revalidation: that refreshes the bell after any write.
+  { path: '/notifications/unread', loader: unreadLoader },
+  { path: '/notifications/read', action: readAction },
 
   {
     path: '/',
@@ -52,6 +59,7 @@ export const routes: RouteObject[] = [
         errorElement: <RouteError notFound={EVIDENCE_NOT_FOUND} />,
         hydrateFallbackElement: <DetailLoading />,
       },
+      { path: 'notifications', loader: notificationsLoader, element: <NotificationsPage />, errorElement: <RouteError />, hydrateFallbackElement: <PageLoading /> },
       { path: '*', loader: guardLoader, element: <NotFound />, hydrateFallbackElement: null },
     ],
   },

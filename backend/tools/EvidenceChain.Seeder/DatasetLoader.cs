@@ -104,9 +104,14 @@ internal static class DatasetLoader
         await ScalarAsync<int>(connection, transaction,
             $"SELECT CASE WHEN {string.Join(" OR ", SeededTables.Select(t => $"EXISTS (SELECT 1 FROM dbo.{t})"))} THEN 1 ELSE 0 END", cancellationToken) == 1;
 
-    /// <summary>Deletes every seeded row; the append-only trigger is lifted only for the event delete.</summary>
+    /// <summary>
+    /// Deletes every seeded row, and first the notifications the API wrote about them; the append-only trigger is lifted
+    /// only for the event delete. Notifications are not in <see cref="SeededTables"/>: they are runtime rows, so they
+    /// never make a database count as seeded.
+    /// </summary>
     private static Task ResetAsync(SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken) =>
         ExecuteAsync(connection, transaction, $"""
+            DELETE dbo.Notifications;
             DISABLE TRIGGER dbo.{AppendOnlyTrigger} ON dbo.CustodyEvents;
             DELETE dbo.CustodyEvents;
             ENABLE TRIGGER dbo.{AppendOnlyTrigger} ON dbo.CustodyEvents;

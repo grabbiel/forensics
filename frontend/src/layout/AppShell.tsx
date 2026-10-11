@@ -1,6 +1,7 @@
 import { LinkSimple, SignOut } from '@phosphor-icons/react'
 import { Form, Link, Outlet, useNavigation } from 'react-router'
 import { getSession } from '../auth/session'
+import { NotificationBell } from './NotificationBell'
 import { SearchBox } from './SearchBox'
 
 /**
@@ -28,6 +29,7 @@ export function AppShell() {
           <SearchBox />
           {user && (
             <div className="account">
+              <NotificationBell />
               <span className="account__who">
                 <span className="account__name">{user.displayName}</span>
                 <span className="account__role">{user.role}</span>
