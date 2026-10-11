@@ -1,12 +1,12 @@
 # Overview
 
-Evidence Chain records digital evidence, its custody history and its transfers. Both journeys run end to end, from React to SQL Server.
+"Evidence Chain" records digital evidence, its custody history and its transfers. Both journeys run end to end, from React to SQL Server.
 
-**Done.** An inbox with filters in the URL and keyset pages, forward and back. Evidence detail with the custody timeline, the overdue-transfer anomaly and chain verification. Transfers through a state machine, with `If-Match`, `409` and `Idempotency-Key`, shown as pending. Per-role notifications of each transfer step, with an unread count in the header. An append-only HMAC chain, JWT roles, problem+json, a tested `openapi.yaml` and a seed of 1,000 items and 10,000 events. Extras: an Azure deployment, a 200,000-event measurement and an hourly integrity sweep.
+**Done.** An inbox with filters in the URL and keyset pages, forward and back. Evidence detail with the custody timeline, the overdue-transfer anomaly and chain verification. Transfers through a state machine, with `If-Match`, `409` and `Idempotency-Key`, shown as pending. Per-role notifications of transfer steps. An append-only HMAC chain, JWT roles, problem+json, a tested `openapi.yaml` and a seed of 1,000 items and 10,000 events. Extras: an Azure deployment, rate limits (`429` with `Retry-After`), a 200,000-event measurement and an hourly integrity sweep.
 
-**Left out.** File upload, rate limiting, i18n (the UI is in Spanish) and real identity: sign-in picks a demo user. The first alert is designed, not provisioned.
+**Left out.** File upload, i18n (the UI is in Spanish) and real identity: sign-in picks a demo user. The first alert is designed, not provisioned.
 
-**Run, seed and test.** Run `docker compose up --build` and open http://localhost:8080; `migrate` applies the migrations and the seed. For tests, run `dotnet test --solution EvidenceChain.slnx` in `backend/` and `npm ci && npm test` in `frontend/`. The [README](../README.md) has details and the tests per requirement.
+**Run, seed and test.** Run `docker compose up --build` and open http://localhost:8080 (on Windows, Docker Desktop needs WSL 2 first: `wsl --install`); `migrate` applies the migrations and the seed. For tests, run `dotnet test --solution EvidenceChain.slnx` in `backend/` and `npm ci && npm test` in `frontend/`. The [README](../README.md) has details and tests per requirement.
 
 ## How the main query was measured
 
@@ -25,4 +25,4 @@ Keyset cost stays flat with depth; `OFFSET` reads all rows. Covering indexes cos
 
 - **Accessibility audits:** none were run. Keyboard paths and focus are tested; contrast was checked by hand.
 - **Azure-only paths:** the managed identity and Key Vault references are checked by hand after deploying.
-- **Load and browsers:** contention is tested for correctness, not throughput. Tests run in jsdom; the UI was checked by hand in Chromium.
+- **Load and browsers:** contention and rate limits are tested for correctness, not throughput. Tests run in jsdom; the UI was checked by hand in Chromium.
