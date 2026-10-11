@@ -2,11 +2,13 @@
 
 ## Tools and where they were used
 
-- **Claude Code (Claude Opus):** research and the build (code, tests, migrations, these documents) and browser checks of each journey.
-- **Codex CLI and Claude sub-agents,** without write access: two independent reviews of every pull request, including mutation checks of tests.
+- **Claude Code (Claude Opus):** research and part of the build (code, tests, migrations), browser checks of each journey, and suggestions for performance fixes.
+- **Codex CLI and Claude sub-agents,** without write access: two independent reviews of each pull request through #26, with mutation checks of tests; findings were fixed before merging.
+- **Cursor (agent):** the previous page (#33) and notifications (#34), from Claude Code's briefs.
 - **A local Qwen model** (mlx-serve): early architecture proposals and critique.
+- **Gemini 3.1 Pro (agy CLI):** rate-limiting proposals, cross-reviewed with Codex and Qwen.
 
-Every change went through a pull request, merged after its review findings were fixed; from PR #7 on, the tests were required checks.
+Every change went through a pull request; from PR #7 on, the tests were required checks.
 
 ## A suggestion I accepted
 
@@ -18,4 +20,4 @@ During design, the local model proposed keeping idempotency keys in Redis, as fa
 
 ## What I reviewed most closely
 
-The custody write path in `CustodyTransferService`. It passed locally, but CI failed once on a race: one decision read the transfer before a concurrent commit and the evidence after it. After a step-by-step review, every write locks the evidence row first, then reads the transfer and checks for a replay, in one transaction. Parallel-duplicate and competing-accept tests run on every pull request. I gave the generated journey tests (`journeys.test.tsx`) the same scrutiny. The 409, reload, stale-response and modal tests stayed green under their first mutation checks, so I revised them until each regression made its test fail.
+How the API finds the caller's address behind Azure's front ends, since every rate limit keys on it. Trusting `X-Forwarded-For` too far lets a caller pick its own address, and so its own budget. Some AI-assisted reviews caught three ways in: the local model trusted the leftmost entry, which the caller writes; `ASPNETCORE_FORWARDEDHEADERS_ENABLED`, if the platform set it, would add a trust-all pass; and the App Insights addresses I meant to check the rollout with were recorded before forwarding ran. The API now believes only configured ranges, one hop deep, refuses to start with that switch on or a `/0` range, and records the resolved address at response time.
